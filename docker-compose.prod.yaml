@@ -1,0 +1,20 @@
+version: '3.8'
+services:
+  ms-orders:
+    build: .
+    image: sigi-ms-orders:latest
+    container_name: sigi-ms-orders-prod
+    ports:
+      - "172.17.0.1:8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=prod
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/sigi
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - SERVER_PORT=8084
+    volumes:
+      - /home/github-runner/sigi-uploads-prod:/app/uploads
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: always
