@@ -1,6 +1,7 @@
 package com.imprenta.ordenes_service.service;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -14,8 +15,10 @@ import com.imprenta.ordenes_service.exception.ResourceNotFoundException;
 import com.imprenta.ordenes_service.helpers.SecurityHelper;
 import com.imprenta.ordenes_service.model.DetalleSolicitud;
 import com.imprenta.ordenes_service.model.Movimientos;
+import com.imprenta.ordenes_service.model.Orden;
 import com.imprenta.ordenes_service.model.SolicitudInsumo;
 import com.imprenta.ordenes_service.repository.MovimientoRepository;
+import com.imprenta.ordenes_service.repository.OrdenRepository;
 import com.imprenta.ordenes_service.repository.SolicitudInsumoRepository;
 
 import org.springframework.transaction.annotation.Transactional;
@@ -24,21 +27,26 @@ import org.springframework.transaction.annotation.Transactional;
 public class ComprasService {
 
     private final SolicitudInsumoRepository solicitudInsumoRepository;
+    private final OrdenRepository ordenRepository;
     private final MovimientoRepository movimientoRepository;
     private final SecurityHelper securityHelper;
     private final NotificationService notificationService;
 
     private static final Integer ESTATUS_PENDIENTE = 1;
     private static final Integer ESTATUS_COMPRADA = 2;
+    private static final Integer ESTATUS_ATRASADA = 3;
 
     private static final Integer TIPO_EGRESO = 2;
 
     @Autowired
-    public ComprasService(SolicitudInsumoRepository solicitudInsumoRepository,
+    public ComprasService(
+            SolicitudInsumoRepository solicitudInsumoRepository,
+            OrdenRepository ordenRepository,
             MovimientoRepository movimientoRepository,
             SecurityHelper securityHelper,
             NotificationService notificationService) {
         this.solicitudInsumoRepository = solicitudInsumoRepository;
+        this.ordenRepository = ordenRepository;
         this.movimientoRepository = movimientoRepository;
         this.securityHelper = securityHelper;
         this.notificationService = notificationService;
@@ -132,14 +140,35 @@ public class ComprasService {
         return movimientoRepository.save(egreso);
     }
 
-    @Transactional(readOnly = true)
-    public List<SolicitudInsumo> obtenerPendientes() {
-        List<SolicitudInsumo> lista = solicitudInsumoRepository.findByIdEstatus(ESTATUS_PENDIENTE);
+    @Transactional
+    public SolicitudInsumo cerrarSolicitud(Integer idSolicitud, Integer idUsuario, Integer idEstatus,
+            LocalDate nuevaFechaEntrega) {
 
-        for (SolicitudInsumo solicitud : lista) {
-            Hibernate.initialize(solicitud.getDetalles());
+        SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
+                .orElseThrow(() -> new IllegalArgumentException("La solicitud con ID " + idSolicitud + " no existe."));
+
+        if (!idEstatus.equals(ESTATUS_COMPRADA) && !idEstatus.equals(ESTATUS_ATRASADA)) {
+            throw new IllegalArgumentException(
+                    "Estatus no permitido para esta operación. Use 2 (COMPRADA) o 3 (ATRASADA).");
         }
 
-        return lista;
+        solicitud.setIdEstatus(idEstatus);
+
+        if (idEstatus.equals(ESTATUS_ATRASADA) && nuevaFechaEntrega != null && solicitud.getIdOrden() != null) {
+
+            Orden orden = ordenRepository.findById(solicitud.getIdOrden())
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "La orden asociada ID " + solicitud.getIdOrden() + " no existe."));
+
+            orden.setFechaEntregaFormal(nuevaFechaEntrega);
+
+            ordenRepository.save(orden);
+        }
+
+        return solicitudInsumoRepository.save(solicitud);
+    }
+
+    public List<SolicitudInsumo> obtenerPendientes() {
+        return solicitudInsumoRepository.findByIdEstatus(ESTATUS_PENDIENTE);
     }
 }

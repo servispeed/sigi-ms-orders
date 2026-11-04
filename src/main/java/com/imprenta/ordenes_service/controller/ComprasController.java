@@ -9,6 +9,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -74,6 +75,35 @@ public class ComprasController {
     @GetMapping("/pendientes")
     public ResponseEntity<List<SolicitudInsumo>> verPendientes() {
         return ResponseEntity.ok(comprasService.obtenerPendientes());
+    }
+
+    @PutMapping("/{idSolicitud}/cerrar")
+    public ResponseEntity<?> cerrarSolicitud(
+            @PathVariable Integer idSolicitud,
+            @RequestHeader(value = "X-User-Id", required = false) Integer idUsuario,
+            @RequestBody Map<String, Object> body) {
+        try {
+            Integer idEstatus = body.get("idEstatus") != null ? Integer.valueOf(body.get("idEstatus").toString()) : 2;
+
+            java.time.LocalDate nuevaFechaEntrega = null;
+            if (body.get("nuevaFechaEntrega") != null) {
+                nuevaFechaEntrega = java.time.LocalDate.parse(body.get("nuevaFechaEntrega").toString());
+            }
+
+            SolicitudInsumo solicitudCerrada = comprasService.cerrarSolicitud(idSolicitud, idUsuario, idEstatus,
+                    nuevaFechaEntrega);
+
+            Map<String, Object> respuesta = new HashMap<>();
+            respuesta.put("mensaje", "Solicitud #" + idSolicitud + " actualizada correctamente.");
+            respuesta.put("solicitud", solicitudCerrada);
+
+            return ResponseEntity.ok(respuesta);
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Error al actualizar la solicitud: " + e.getMessage());
+        }
     }
 
 }
