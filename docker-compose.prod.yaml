@@ -13,6 +13,7 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
       - JWT_SECRET=${JWT_SECRET}
       - SERVER_PORT=8084
+      - MQTT_BROKER_URL=tcp://host.docker.internal:1883
     volumes:
       - /home/github-runner/sigi-uploads-prod:/app/uploads
     extra_hosts:
