@@ -7,7 +7,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import com.imprenta.ordenes_service.dto.ClienteDTO;
 import com.imprenta.ordenes_service.dto.UsuarioDTO;
 
-@FeignClient(name = "personas-service", url = "http://10.0.0.1:8081")
+@FeignClient(name = "personas-service", url = "http://host.docker.internal:8081")
 public interface PersonasClient {
 
     @GetMapping("/api/usuarios/{id}")
