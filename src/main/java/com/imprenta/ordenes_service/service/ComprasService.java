@@ -122,7 +122,7 @@ public class ComprasService {
         SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
                 .orElseThrow(() -> new ResourceNotFoundException("Solicitud no encontrada"));
 
-        String nombreArchivoComprobante = fileStorageHelper.guardarArchivo(comprobante);
+        String nombreArchivoComprobante = fileStorageHelper.guardarComprobante(comprobante);
 
         SolicitudInsumoComprobante registroComprobante = new SolicitudInsumoComprobante();
         registroComprobante.setIdSolicitud(idSolicitud);
