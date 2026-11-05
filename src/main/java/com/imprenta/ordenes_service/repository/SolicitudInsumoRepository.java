@@ -7,8 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.imprenta.ordenes_service.model.SolicitudInsumo;
 
-public interface SolicitudInsumoRepository
-        extends JpaRepository<SolicitudInsumo, Integer> {
+public interface SolicitudInsumoRepository extends JpaRepository<SolicitudInsumo, Integer> {
 
     List<SolicitudInsumo> findByIdEstatus(Integer idEstatus);
 
@@ -16,4 +15,7 @@ public interface SolicitudInsumoRepository
 
     @EntityGraph(attributePaths = { "detalles" })
     List<SolicitudInsumo> findWithDetallesByIdEstatus(Integer idEstatus);
+
+    @EntityGraph(attributePaths = { "detalles" })
+    List<SolicitudInsumo> findWithDetallesByIdEstatusIn(List<Integer> estatusList);
 }
