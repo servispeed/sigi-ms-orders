@@ -3,25 +3,28 @@ package com.imprenta.ordenes_service.service;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Map;
+import java.util.HashMap;
 import java.util.List;
 
-import org.hibernate.Hibernate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
 import com.imprenta.ordenes_service.dto.CrearSolicitudDTO;
 import com.imprenta.ordenes_service.dto.ProductoSolicitudDTO;
 import com.imprenta.ordenes_service.exception.ResourceNotFoundException;
+import com.imprenta.ordenes_service.helpers.FileStorageHelper;
 import com.imprenta.ordenes_service.helpers.SecurityHelper;
 import com.imprenta.ordenes_service.model.DetalleSolicitud;
 import com.imprenta.ordenes_service.model.Movimientos;
 import com.imprenta.ordenes_service.model.Orden;
 import com.imprenta.ordenes_service.model.SolicitudInsumo;
+import com.imprenta.ordenes_service.model.SolicitudInsumoComprobante;
 import com.imprenta.ordenes_service.repository.MovimientoRepository;
 import com.imprenta.ordenes_service.repository.OrdenRepository;
 import com.imprenta.ordenes_service.repository.SolicitudInsumoRepository;
+import com.imprenta.ordenes_service.repository.SolicitudInsumoComprobanteRepository;
 
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
 @Service
 public class ComprasService {
@@ -29,7 +32,9 @@ public class ComprasService {
     private final SolicitudInsumoRepository solicitudInsumoRepository;
     private final OrdenRepository ordenRepository;
     private final MovimientoRepository movimientoRepository;
+    private final SolicitudInsumoComprobanteRepository comprobanteRepository;
     private final SecurityHelper securityHelper;
+    private final FileStorageHelper fileStorageHelper;
     private final NotificationService notificationService;
 
     private static final Integer ESTATUS_PENDIENTE = 1;
@@ -38,19 +43,21 @@ public class ComprasService {
 
     private static final Integer TIPO_EGRESO = 2;
 
-    @Autowired
     public ComprasService(
             SolicitudInsumoRepository solicitudInsumoRepository,
             OrdenRepository ordenRepository,
             MovimientoRepository movimientoRepository,
+            SolicitudInsumoComprobanteRepository comprobanteRepository,
             SecurityHelper securityHelper,
+            FileStorageHelper fileStorageHelper,
             NotificationService notificationService) {
         this.solicitudInsumoRepository = solicitudInsumoRepository;
         this.ordenRepository = ordenRepository;
         this.movimientoRepository = movimientoRepository;
+        this.comprobanteRepository = comprobanteRepository;
         this.securityHelper = securityHelper;
         this.notificationService = notificationService;
-
+        this.fileStorageHelper = fileStorageHelper;
     }
 
     @Transactional
@@ -101,15 +108,29 @@ public class ComprasService {
     }
 
     @Transactional
-    public Movimientos registrarCompra(Integer idSolicitud, BigDecimal costoReal, Integer idUsuarioAdmin) {
+    public Map<String, Object> procesarCompraIntegral(Integer idSolicitud, Integer idUsuarioAdmin,
+            BigDecimal costoReal, Integer idEstatus,
+            LocalDate nuevaFechaEntrega, MultipartFile comprobante) {
 
         securityHelper.validarPermiso(idUsuarioAdmin, SecurityHelper.ROL_ADMIN, SecurityHelper.ROL_DUENO,
                 SecurityHelper.ROL_CONTADORA);
 
+        if (!idEstatus.equals(ESTATUS_COMPRADA) && !idEstatus.equals(ESTATUS_ATRASADA)) {
+            throw new IllegalArgumentException("Estatus no permitido. Use 2 (COMPRADA) o 3 (ATRASADA).");
+        }
+
         SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
                 .orElseThrow(() -> new ResourceNotFoundException("Solicitud no encontrada"));
 
-        solicitud.setIdEstatus(ESTATUS_COMPRADA);
+        String nombreArchivoComprobante = fileStorageHelper.guardarArchivo(comprobante);
+
+        SolicitudInsumoComprobante registroComprobante = new SolicitudInsumoComprobante();
+        registroComprobante.setIdSolicitud(idSolicitud);
+        registroComprobante.setRutaArchivo(nombreArchivoComprobante);
+        registroComprobante.setFechaSubida(LocalDateTime.now());
+        comprobanteRepository.save(registroComprobante);
+
+        solicitud.setIdEstatus(idEstatus);
         solicitudInsumoRepository.save(solicitud);
 
         StringBuilder conceptoBuilder = new StringBuilder();
@@ -137,35 +158,23 @@ public class ComprasService {
         egreso.setIdUsuarioRegistro(idUsuarioAdmin);
         egreso.setIdOrden(solicitud.getIdOrden());
 
-        return movimientoRepository.save(egreso);
-    }
-
-    @Transactional
-    public SolicitudInsumo cerrarSolicitud(Integer idSolicitud, Integer idUsuario, Integer idEstatus,
-            LocalDate nuevaFechaEntrega) {
-
-        SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
-                .orElseThrow(() -> new IllegalArgumentException("La solicitud con ID " + idSolicitud + " no existe."));
-
-        if (!idEstatus.equals(ESTATUS_COMPRADA) && !idEstatus.equals(ESTATUS_ATRASADA)) {
-            throw new IllegalArgumentException(
-                    "Estatus no permitido para esta operación. Use 2 (COMPRADA) o 3 (ATRASADA).");
-        }
-
-        solicitud.setIdEstatus(idEstatus);
+        Movimientos movimientoGuardado = movimientoRepository.save(egreso);
 
         if (idEstatus.equals(ESTATUS_ATRASADA) && nuevaFechaEntrega != null && solicitud.getIdOrden() != null) {
-
             Orden orden = ordenRepository.findById(solicitud.getIdOrden())
-                    .orElseThrow(() -> new IllegalArgumentException(
-                            "La orden asociada ID " + solicitud.getIdOrden() + " no existe."));
+                    .orElseThrow(() -> new ResourceNotFoundException("La orden asociada no existe."));
 
             orden.setFechaEntregaFormal(nuevaFechaEntrega);
-
             ordenRepository.save(orden);
         }
 
-        return solicitudInsumoRepository.save(solicitud);
+        Map<String, Object> respuesta = new HashMap<>();
+        respuesta.put("mensaje", "Compra procesada y comprobante guardado exitosamente.");
+        respuesta.put("comprobante", registroComprobante);
+        respuesta.put("movimiento", movimientoGuardado);
+        respuesta.put("solicitud", solicitud);
+
+        return respuesta;
     }
 
     @Transactional(readOnly = true)
