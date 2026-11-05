@@ -61,13 +61,11 @@ public class ComprasController {
         }
     }
 
-    @PostMapping("/{idSolicitud}/procesar-compra")
-    public ResponseEntity<?> procesarCompraYCerrar(
+    @PostMapping("/{idSolicitud}/compra-exitosa")
+    public ResponseEntity<?> procesarCompraExitosa(
             @PathVariable Integer idSolicitud,
             @RequestHeader("X-User-Id") Integer idUsuario,
             @RequestParam("costoReal") BigDecimal costoReal,
-            @RequestParam("idEstatus") Integer idEstatus,
-            @RequestParam(value = "nuevaFechaEntrega", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate nuevaFechaEntrega,
             @RequestParam("comprobante") MultipartFile comprobante) {
 
         try {
@@ -75,13 +73,12 @@ public class ComprasController {
                 return ResponseEntity.badRequest().body("El comprobante de pago es obligatorio.");
             }
 
-            Map<String, Object> resultado = comprasService.procesarCompraIntegral(
-                    idSolicitud, idUsuario, costoReal, idEstatus, nuevaFechaEntrega, comprobante);
+            Map<String, Object> resultado = comprasService.procesarCompraExitosa(
+                    idSolicitud, idUsuario, costoReal, comprobante);
 
             return ResponseEntity.ok(resultado);
 
         } catch (com.imprenta.ordenes_service.exception.BadRequestException e) {
-            // Captura las excepciones de seguridad arrojadas por SecurityHelper
             return ResponseEntity.status(403).body(e.getMessage());
         } catch (com.imprenta.ordenes_service.exception.ResourceNotFoundException e) {
             return ResponseEntity.status(404).body(e.getMessage());
@@ -90,6 +87,40 @@ public class ComprasController {
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body("Error al procesar la compra: " + e.getMessage());
+        }
+    }
+
+    @PostMapping("/{idSolicitud}/compra-atrasada")
+    public ResponseEntity<?> procesarCompraAtrasada(
+            @PathVariable Integer idSolicitud,
+            @RequestHeader("X-User-Id") Integer idUsuario,
+            @RequestParam("costoReal") BigDecimal costoReal,
+            @RequestParam("nuevaFechaEntrega") @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate nuevaFechaEntrega,
+            @RequestParam("comprobante") MultipartFile comprobante) {
+
+        try {
+            if (comprobante.isEmpty()) {
+                return ResponseEntity.badRequest().body("El comprobante de pago es obligatorio.");
+            }
+
+            if (nuevaFechaEntrega == null) {
+                return ResponseEntity.badRequest().body("La nueva fecha de entrega es obligatoria para atrasos.");
+            }
+
+            Map<String, Object> resultado = comprasService.procesarCompraAtrasada(
+                    idSolicitud, idUsuario, costoReal, nuevaFechaEntrega, comprobante);
+
+            return ResponseEntity.ok(resultado);
+
+        } catch (com.imprenta.ordenes_service.exception.BadRequestException e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        } catch (com.imprenta.ordenes_service.exception.ResourceNotFoundException e) {
+            return ResponseEntity.status(404).body(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("Error al procesar el atraso: " + e.getMessage());
         }
     }
 
