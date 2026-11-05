@@ -15,6 +15,7 @@ services:
       - SERVER_PORT=8084
     volumes:
       - /home/github-runner/sigi-uploads-test:/app/uploads
+      - /home/github-runner/sigi-receipts-test:/app/receipts
     extra_hosts:
       - "host.docker.internal:host-gateway"
     restart: always
