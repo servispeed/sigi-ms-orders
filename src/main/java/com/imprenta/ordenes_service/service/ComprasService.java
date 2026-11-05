@@ -108,31 +108,113 @@ public class ComprasService {
     }
 
     @Transactional
-    public Map<String, Object> procesarCompraIntegral(Integer idSolicitud, Integer idUsuarioAdmin,
-            BigDecimal costoReal, Integer idEstatus,
-            LocalDate nuevaFechaEntrega, MultipartFile comprobante) {
+    public Map<String, Object> procesarCompraExitosa(Integer idSolicitud, Integer idUsuarioAdmin,
+            BigDecimal costoReal, MultipartFile comprobante) {
 
         securityHelper.validarPermiso(idUsuarioAdmin, SecurityHelper.ROL_ADMIN, SecurityHelper.ROL_DUENO,
                 SecurityHelper.ROL_CONTADORA);
 
-        if (!idEstatus.equals(ESTATUS_COMPRADA) && !idEstatus.equals(ESTATUS_ATRASADA)) {
-            throw new IllegalArgumentException("Estatus no permitido. Use 2 (COMPRADA) o 3 (ATRASADA).");
+        SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
+                .orElseThrow(() -> new ResourceNotFoundException("Solicitud no encontrada"));
+
+        SolicitudInsumoComprobante registroComprobante = guardarComprobanteYRegistro(idSolicitud, comprobante);
+
+        solicitud.setIdEstatus(ESTATUS_COMPRADA);
+        solicitudInsumoRepository.save(solicitud);
+
+        Movimientos movimientoGuardado = registrarMovimientoEgreso(solicitud, costoReal, idUsuarioAdmin);
+
+        if (solicitud.getIdOrden() != null) {
+            Orden orden = ordenRepository.findById(solicitud.getIdOrden())
+                    .orElseThrow(() -> new ResourceNotFoundException("La orden asociada no existe."));
+
+            orden.setInsumosVerificados(true);
+            ordenRepository.save(orden);
         }
+
+        String mensajeNotificacion = "Los insumos de la solicitud #" + idSolicitud + " ya están listos";
+        if (solicitud.getIdOrden() != null) {
+            mensajeNotificacion += " para la orden #" + solicitud.getIdOrden() + ".";
+        } else {
+            mensajeNotificacion += ".";
+        }
+
+        notificationService.notificarARoles(
+                String.valueOf(idUsuarioAdmin),
+                List.of("JEFE DE TALLER"),
+                "INSUMOS_LISTOS",
+                "Los insumos estan listos",
+                mensajeNotificacion);
+
+        Map<String, Object> respuesta = new HashMap<>();
+        respuesta.put("mensaje", "Compra procesada, insumos listos y comprobante guardado.");
+        respuesta.put("comprobante", registroComprobante);
+        respuesta.put("movimiento", movimientoGuardado);
+        respuesta.put("solicitud", solicitud);
+
+        return respuesta;
+    }
+
+    @Transactional
+    public Map<String, Object> procesarCompraAtrasada(Integer idSolicitud, Integer idUsuarioAdmin,
+            BigDecimal costoReal, LocalDate nuevaFechaEntrega, MultipartFile comprobante) {
+
+        securityHelper.validarPermiso(idUsuarioAdmin, SecurityHelper.ROL_ADMIN, SecurityHelper.ROL_DUENO,
+                SecurityHelper.ROL_CONTADORA);
 
         SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
                 .orElseThrow(() -> new ResourceNotFoundException("Solicitud no encontrada"));
 
+        SolicitudInsumoComprobante registroComprobante = guardarComprobanteYRegistro(idSolicitud, comprobante);
+
+        solicitud.setIdEstatus(ESTATUS_ATRASADA);
+        solicitudInsumoRepository.save(solicitud);
+
+        Movimientos movimientoGuardado = registrarMovimientoEgreso(solicitud, costoReal, idUsuarioAdmin);
+
+        if (solicitud.getIdOrden() != null) {
+            Orden orden = ordenRepository.findById(solicitud.getIdOrden())
+                    .orElseThrow(() -> new ResourceNotFoundException("La orden asociada no existe."));
+
+            orden.setFechaEntregaFormal(nuevaFechaEntrega);
+            ordenRepository.save(orden);
+        }
+
+        String mensajeNotificacionAtraso = "Los insumos de la solicitud #" + idSolicitud + " están demorados.";
+        if (solicitud.getIdOrden() != null) {
+            mensajeNotificacionAtraso += " La fecha de entrega para la orden #" + solicitud.getIdOrden()
+                    + " se ha movido al " + nuevaFechaEntrega + ".";
+        }
+
+        notificationService.notificarARoles(
+                String.valueOf(idUsuarioAdmin),
+                List.of("JEFE DE TALLER"),
+                "INSUMOS_ATRASADOS",
+                "Aviso de insumos atrasados",
+                mensajeNotificacionAtraso);
+
+        Map<String, Object> respuesta = new HashMap<>();
+        respuesta.put("mensaje", "Compra registrada como atrasada, fecha de entrega de la orden actualizada.");
+        respuesta.put("comprobante", registroComprobante);
+        respuesta.put("movimiento", movimientoGuardado);
+        respuesta.put("solicitud", solicitud);
+
+        return respuesta;
+    }
+
+    private SolicitudInsumoComprobante guardarComprobanteYRegistro(Integer idSolicitud, MultipartFile comprobante) {
         String nombreArchivoComprobante = fileStorageHelper.guardarComprobante(comprobante);
 
         SolicitudInsumoComprobante registroComprobante = new SolicitudInsumoComprobante();
         registroComprobante.setIdSolicitud(idSolicitud);
         registroComprobante.setRutaArchivo(nombreArchivoComprobante);
         registroComprobante.setFechaSubida(LocalDateTime.now());
-        comprobanteRepository.save(registroComprobante);
 
-        solicitud.setIdEstatus(idEstatus);
-        solicitudInsumoRepository.save(solicitud);
+        return comprobanteRepository.save(registroComprobante);
+    }
 
+    private Movimientos registrarMovimientoEgreso(SolicitudInsumo solicitud, BigDecimal costoReal,
+            Integer idUsuarioAdmin) {
         StringBuilder conceptoBuilder = new StringBuilder();
         conceptoBuilder.append("Compra Sol #").append(solicitud.getIdSolicitud());
 
@@ -158,20 +240,51 @@ public class ComprasService {
         egreso.setIdUsuarioRegistro(idUsuarioAdmin);
         egreso.setIdOrden(solicitud.getIdOrden());
 
-        Movimientos movimientoGuardado = movimientoRepository.save(egreso);
+        return movimientoRepository.save(egreso);
+    }
 
-        if (idEstatus.equals(ESTATUS_ATRASADA) && nuevaFechaEntrega != null && solicitud.getIdOrden() != null) {
+    @Transactional
+    public Map<String, Object> registrarLlegadaDeAtraso(Integer idSolicitud, Integer idUsuarioAdmin) {
+
+        securityHelper.validarPermiso(idUsuarioAdmin, SecurityHelper.ROL_ADMIN, SecurityHelper.ROL_DUENO,
+                SecurityHelper.ROL_CONTADORA);
+
+        SolicitudInsumo solicitud = solicitudInsumoRepository.findById(idSolicitud)
+                .orElseThrow(() -> new ResourceNotFoundException("Solicitud no encontrada"));
+
+        if (!solicitud.getIdEstatus().equals(ESTATUS_ATRASADA)) {
+            throw new IllegalArgumentException(
+                    "Solo las solicitudes con estatus ATRASADA pueden marcarse como llegadas por esta vía.");
+        }
+
+        solicitud.setIdEstatus(ESTATUS_COMPRADA);
+        solicitudInsumoRepository.save(solicitud);
+
+        if (solicitud.getIdOrden() != null) {
             Orden orden = ordenRepository.findById(solicitud.getIdOrden())
                     .orElseThrow(() -> new ResourceNotFoundException("La orden asociada no existe."));
 
-            orden.setFechaEntregaFormal(nuevaFechaEntrega);
+            orden.setInsumosVerificados(true);
             ordenRepository.save(orden);
         }
 
+        String mensajeNotificacion = "Los insumos de la solicitud #" + idSolicitud
+                + " que estaban demorados por fin han llegado y están listos";
+        if (solicitud.getIdOrden() != null) {
+            mensajeNotificacion += " para la orden #" + solicitud.getIdOrden() + ".";
+        } else {
+            mensajeNotificacion += ".";
+        }
+
+        notificationService.notificarARoles(
+                String.valueOf(idUsuarioAdmin),
+                List.of("JEFE_TALLER"),
+                "INSUMOS_LISTOS",
+                "Llegada de insumos atrasados",
+                mensajeNotificacion);
+
         Map<String, Object> respuesta = new HashMap<>();
-        respuesta.put("mensaje", "Compra procesada y comprobante guardado exitosamente.");
-        respuesta.put("comprobante", registroComprobante);
-        respuesta.put("movimiento", movimientoGuardado);
+        respuesta.put("mensaje", "La llegada de los insumos atrasados ha sido registrada exitosamente.");
         respuesta.put("solicitud", solicitud);
 
         return respuesta;
@@ -179,7 +292,7 @@ public class ComprasService {
 
     @Transactional(readOnly = true)
     public List<SolicitudInsumo> obtenerPendientes() {
-        return solicitudInsumoRepository.findWithDetallesByIdEstatus(
-                ESTATUS_PENDIENTE);
+        return solicitudInsumoRepository.findWithDetallesByIdEstatusIn(
+                List.of(ESTATUS_PENDIENTE, ESTATUS_ATRASADA));
     }
 }
