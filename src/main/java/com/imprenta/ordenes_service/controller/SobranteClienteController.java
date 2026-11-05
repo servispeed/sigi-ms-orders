@@ -23,7 +23,7 @@ import com.imprenta.ordenes_service.model.SobranteCliente;
 import com.imprenta.ordenes_service.service.SobranteClienteService;
 
 @RestController
-@RequestMapping("api/sobrantes")
+@RequestMapping("/api/sobrantes")
 public class SobranteClienteController {
 
     private final SobranteClienteService sobranteService;

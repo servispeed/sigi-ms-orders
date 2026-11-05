@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.imprenta.ordenes_service.dto.CrearSolicitudDTO;
 import com.imprenta.ordenes_service.model.Movimientos;
@@ -59,51 +61,41 @@ public class ComprasController {
         }
     }
 
-    @PostMapping("/{idSolicitud}/comprar")
-    public ResponseEntity<Movimientos> registrarCompra(
+    @PostMapping("/{idSolicitud}/procesar-compra")
+    public ResponseEntity<?> procesarCompraYCerrar(
             @PathVariable Integer idSolicitud,
-            @RequestBody Map<String, Object> body) {
+            @RequestHeader("X-User-Id") Integer idUsuario,
+            @RequestParam("costoReal") BigDecimal costoReal,
+            @RequestParam("idEstatus") Integer idEstatus,
+            @RequestParam(value = "nuevaFechaEntrega", required = false) @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate nuevaFechaEntrega,
+            @RequestParam("comprobante") MultipartFile comprobante) {
 
-        Integer idUsuario = Integer.valueOf(body.get("idUsuario").toString());
-        BigDecimal costoReal = new BigDecimal(body.get("costoReal").toString());
+        try {
+            if (comprobante.isEmpty()) {
+                return ResponseEntity.badRequest().body("El comprobante de pago es obligatorio.");
+            }
 
-        Movimientos egreso = comprasService.registrarCompra(idSolicitud, costoReal, idUsuario);
+            Map<String, Object> resultado = comprasService.procesarCompraIntegral(
+                    idSolicitud, idUsuario, costoReal, idEstatus, nuevaFechaEntrega, comprobante);
 
-        return ResponseEntity.ok(egreso);
+            return ResponseEntity.ok(resultado);
+
+        } catch (com.imprenta.ordenes_service.exception.BadRequestException e) {
+            // Captura las excepciones de seguridad arrojadas por SecurityHelper
+            return ResponseEntity.status(403).body(e.getMessage());
+        } catch (com.imprenta.ordenes_service.exception.ResourceNotFoundException e) {
+            return ResponseEntity.status(404).body(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("Error al procesar la compra: " + e.getMessage());
+        }
     }
 
     @GetMapping("/pendientes")
     public ResponseEntity<List<SolicitudInsumo>> verPendientes() {
         return ResponseEntity.ok(comprasService.obtenerPendientes());
-    }
-
-    @PutMapping("/{idSolicitud}/cerrar")
-    public ResponseEntity<?> cerrarSolicitud(
-            @PathVariable Integer idSolicitud,
-            @RequestHeader(value = "X-User-Id", required = false) Integer idUsuario,
-            @RequestBody Map<String, Object> body) {
-        try {
-            Integer idEstatus = body.get("idEstatus") != null ? Integer.valueOf(body.get("idEstatus").toString()) : 2;
-
-            java.time.LocalDate nuevaFechaEntrega = null;
-            if (body.get("nuevaFechaEntrega") != null) {
-                nuevaFechaEntrega = java.time.LocalDate.parse(body.get("nuevaFechaEntrega").toString());
-            }
-
-            SolicitudInsumo solicitudCerrada = comprasService.cerrarSolicitud(idSolicitud, idUsuario, idEstatus,
-                    nuevaFechaEntrega);
-
-            Map<String, Object> respuesta = new HashMap<>();
-            respuesta.put("mensaje", "Solicitud #" + idSolicitud + " actualizada correctamente.");
-            respuesta.put("solicitud", solicitudCerrada);
-
-            return ResponseEntity.ok(respuesta);
-
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.badRequest().body(e.getMessage());
-        } catch (Exception e) {
-            return ResponseEntity.internalServerError().body("Error al actualizar la solicitud: " + e.getMessage());
-        }
     }
 
 }
