@@ -168,7 +168,9 @@ public class ComprasService {
         return solicitudInsumoRepository.save(solicitud);
     }
 
+    @Transactional(readOnly = true)
     public List<SolicitudInsumo> obtenerPendientes() {
-        return solicitudInsumoRepository.findByIdEstatus(ESTATUS_PENDIENTE);
+        return solicitudInsumoRepository.findWithDetallesByIdEstatus(
+                ESTATUS_PENDIENTE);
     }
 }
