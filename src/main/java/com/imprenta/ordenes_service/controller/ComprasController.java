@@ -18,7 +18,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.imprenta.ordenes_service.dto.CrearSolicitudDTO;
-import com.imprenta.ordenes_service.model.Movimientos;
 import com.imprenta.ordenes_service.model.SolicitudInsumo;
 import com.imprenta.ordenes_service.service.ComprasService;
 
@@ -121,6 +120,27 @@ public class ComprasController {
         } catch (Exception e) {
             e.printStackTrace();
             return ResponseEntity.internalServerError().body("Error al procesar el atraso: " + e.getMessage());
+        }
+    }
+
+    @PutMapping("/{idSolicitud}/llegada-atrasada")
+    public ResponseEntity<?> registrarLlegadaDeInsumosAtrasados(
+            @PathVariable Integer idSolicitud,
+            @RequestHeader("X-User-Id") Integer idUsuario) {
+
+        try {
+            Map<String, Object> resultado = comprasService.registrarLlegadaDeAtraso(idSolicitud, idUsuario);
+            return ResponseEntity.ok(resultado);
+        } catch (com.imprenta.ordenes_service.exception.BadRequestException e) {
+            return ResponseEntity.status(403).body(e.getMessage());
+        } catch (com.imprenta.ordenes_service.exception.ResourceNotFoundException e) {
+            return ResponseEntity.status(404).body(e.getMessage());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError()
+                    .body("Error al registrar la llegada de insumos: " + e.getMessage());
         }
     }
 
