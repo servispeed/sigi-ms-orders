@@ -278,10 +278,14 @@ public class ComprasService {
 
         notificationService.notificarARoles(
                 String.valueOf(idUsuarioAdmin),
-                List.of("JEFE_TALLER"),
+                List.of("JEFE DE TALLER"),
                 "INSUMOS_LISTOS",
                 "Llegada de insumos atrasados",
                 mensajeNotificacion);
+
+        if (solicitud.getDetalles() != null) {
+            solicitud.getDetalles().size();
+        }
 
         Map<String, Object> respuesta = new HashMap<>();
         respuesta.put("mensaje", "La llegada de los insumos atrasados ha sido registrada exitosamente.");
