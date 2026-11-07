@@ -18,8 +18,8 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import com.imprenta.ordenes_service.dto.ConsumirSobranteDTO;
 import com.imprenta.ordenes_service.dto.RegistrarSobranteDTO;
+import com.imprenta.ordenes_service.dto.SobranteResponseDTO;
 import com.imprenta.ordenes_service.exception.BadRequestException;
-import com.imprenta.ordenes_service.model.SobranteCliente;
 import com.imprenta.ordenes_service.service.SobranteClienteService;
 
 @RestController
@@ -33,24 +33,23 @@ public class SobranteClienteController {
     }
 
     @GetMapping
-    public ResponseEntity<Page<SobranteCliente>> obtenerTodosLosSobrantes(
+    public ResponseEntity<Page<SobranteResponseDTO>> obtenerTodosLosSobrantes(
             @PageableDefault(size = 10, page = 0) Pageable pageable) {
-        Page<SobranteCliente> pagina = sobranteService.findAll(pageable);
+        Page<SobranteResponseDTO> pagina = sobranteService.findAll(pageable);
         return ResponseEntity.ok(pagina);
     }
 
     @GetMapping("/cliente/{idCliente}")
-    public ResponseEntity<Page<SobranteCliente>> obtenerSobrantesPorCliente(
+    public ResponseEntity<Page<SobranteResponseDTO>> obtenerSobrantesPorCliente(
             @PathVariable Integer idCliente,
             @PageableDefault(size = 10, page = 0) Pageable pageable) {
-        Page<SobranteCliente> pagina = sobranteService.findByIdCliente(idCliente, pageable);
+        Page<SobranteResponseDTO> pagina = sobranteService.findByIdCliente(idCliente, pageable);
         return ResponseEntity.ok(pagina);
     }
 
     @PostMapping
-    public ResponseEntity<SobranteCliente> registrarSobrante(@RequestBody RegistrarSobranteDTO dto) {
-
-        SobranteCliente sobranteGuardado = sobranteService.registrarSobrante(dto);
+    public ResponseEntity<SobranteResponseDTO> registrarSobrante(@RequestBody RegistrarSobranteDTO dto) {
+        SobranteResponseDTO sobranteGuardado = sobranteService.registrarSobrante(dto);
 
         URI location = ServletUriComponentsBuilder
                 .fromCurrentRequest()
@@ -70,8 +69,9 @@ public class SobranteClienteController {
                 throw new BadRequestException("La cantidad a consumir debe ser mayor a 0.");
             }
 
-            SobranteCliente sobranteActualizado = sobranteService.consumirSobrante(idSobrante,
+            SobranteResponseDTO sobranteActualizado = sobranteService.consumirSobrante(idSobrante,
                     dto.getCantidadConsumida());
+
             return ResponseEntity.ok(sobranteActualizado);
 
         } catch (IllegalArgumentException e) {
