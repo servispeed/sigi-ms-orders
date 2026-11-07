@@ -1,6 +1,7 @@
 package com.imprenta.ordenes_service.service;
 
 import com.imprenta.ordenes_service.dto.RegistrarSobranteDTO;
+import com.imprenta.ordenes_service.dto.SobranteResponseDTO;
 import com.imprenta.ordenes_service.model.Orden;
 import com.imprenta.ordenes_service.model.Producto;
 import com.imprenta.ordenes_service.model.SobranteCliente;
@@ -29,18 +30,16 @@ public class SobranteClienteService {
         this.productoRepository = productoRepository;
     }
 
-    @Transactional(readOnly = true)
-    public Page<SobranteCliente> findAll(Pageable pageable) {
-        return repository.findAll(pageable);
+    public Page<SobranteResponseDTO> findAll(Pageable pageable) {
+        return repository.findAll(pageable).map(this::mapearADTO);
     }
 
-    @Transactional(readOnly = true)
-    public Page<SobranteCliente> findByIdCliente(Integer idCliente, Pageable pageable) {
-        return repository.findByIdCliente(idCliente, pageable);
+    public Page<SobranteResponseDTO> findByIdCliente(Integer idCliente, Pageable pageable) {
+        return repository.findByIdCliente(idCliente, pageable).map(this::mapearADTO);
     }
 
     @Transactional
-    public SobranteCliente registrarSobrante(RegistrarSobranteDTO dto) {
+    public SobranteResponseDTO registrarSobrante(RegistrarSobranteDTO dto) {
         Producto productoReal = productoRepository.findById(dto.getIdProducto())
                 .orElseThrow(() -> new RuntimeException("Producto no encontrado con ID: " + dto.getIdProducto()));
 
@@ -54,25 +53,42 @@ public class SobranteClienteService {
             SobranteCliente sobrante = existente.get();
             sobrante.setCantidadDisponible(sobrante.getCantidadDisponible() + dto.getCantidad());
             sobrante.setOrdenOrigen(ordenReal);
-            return repository.save(sobrante);
+            return mapearADTO(repository.save(sobrante));
         } else {
             SobranteCliente nuevo = new SobranteCliente();
             nuevo.setIdCliente(dto.getIdCliente());
             nuevo.setCantidadDisponible(dto.getCantidad());
             nuevo.setProducto(productoReal);
             nuevo.setOrdenOrigen(ordenReal);
-            return repository.save(nuevo);
+            return mapearADTO(repository.save(nuevo));
         }
     }
 
     @Transactional
-    public SobranteCliente consumirSobrante(Integer idSobrante, Integer cantidadConsumida) {
+    public SobranteResponseDTO consumirSobrante(Integer idSobrante, Integer cantidadConsumida) {
         return repository.findById(idSobrante).map(sobrante -> {
             if (sobrante.getCantidadDisponible() < cantidadConsumida) {
                 throw new IllegalArgumentException("No hay suficiente cantidad disponible del sobrante.");
             }
             sobrante.setCantidadDisponible(sobrante.getCantidadDisponible() - cantidadConsumida);
-            return repository.save(sobrante);
+            return mapearADTO(repository.save(sobrante));
         }).orElseThrow(() -> new RuntimeException("Sobrante no encontrado"));
+    }
+
+    public SobranteResponseDTO mapearADTO(SobranteCliente entidad) {
+        SobranteResponseDTO dto = new SobranteResponseDTO();
+        dto.setIdSobrante(entidad.getIdSobrante());
+        dto.setIdCliente(entidad.getIdCliente());
+        dto.setCantidadDisponible(entidad.getCantidadDisponible());
+        dto.setFechaRegistro(entidad.getFechaRegistro());
+
+        dto.setProducto(new SobranteResponseDTO.ProductoMiniDTO(
+                entidad.getProducto().getIdProducto()));
+
+        dto.setOrdenOrigen(new SobranteResponseDTO.OrdenMiniDTO(
+                entidad.getOrdenOrigen().getIdOrden(),
+                entidad.getOrdenOrigen().getIdCliente()));
+
+        return dto;
     }
 }
