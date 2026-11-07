@@ -41,27 +41,26 @@ public class SobranteClienteService {
 
     @Transactional
     public SobranteCliente registrarSobrante(RegistrarSobranteDTO dto) {
+        Producto productoReal = productoRepository.findById(dto.getIdProducto())
+                .orElseThrow(() -> new RuntimeException("Producto no encontrado con ID: " + dto.getIdProducto()));
+
+        Orden ordenReal = ordenRepository.findById(dto.getIdOrden())
+                .orElseThrow(() -> new RuntimeException("Orden no encontrada con ID: " + dto.getIdOrden()));
+
         Optional<SobranteCliente> existente = repository.findByIdClienteAndProducto_IdProducto(
                 dto.getIdCliente(), dto.getIdProducto());
-
-        Orden ordenRef = ordenRepository.getReferenceById(dto.getIdOrden());
 
         if (existente.isPresent()) {
             SobranteCliente sobrante = existente.get();
             sobrante.setCantidadDisponible(sobrante.getCantidadDisponible() + dto.getCantidad());
-
-            sobrante.setOrdenOrigen(ordenRef);
-
+            sobrante.setOrdenOrigen(ordenReal);
             return repository.save(sobrante);
         } else {
             SobranteCliente nuevo = new SobranteCliente();
             nuevo.setIdCliente(dto.getIdCliente());
             nuevo.setCantidadDisponible(dto.getCantidad());
-
-            Producto productoRef = productoRepository.getReferenceById(dto.getIdProducto());
-            nuevo.setProducto(productoRef);
-            nuevo.setOrdenOrigen(ordenRef);
-
+            nuevo.setProducto(productoReal);
+            nuevo.setOrdenOrigen(ordenReal);
             return repository.save(nuevo);
         }
     }
