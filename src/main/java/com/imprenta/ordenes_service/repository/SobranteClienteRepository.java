@@ -8,7 +8,6 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
-@Repository
 public interface SobranteClienteRepository extends JpaRepository<SobranteCliente, Integer> {
 
     Optional<SobranteCliente> findByIdClienteAndProducto_IdProducto(Integer idCliente, Integer idProducto);

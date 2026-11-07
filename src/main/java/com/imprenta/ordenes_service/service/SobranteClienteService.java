@@ -4,10 +4,13 @@ import com.imprenta.ordenes_service.dto.RegistrarSobranteDTO;
 import com.imprenta.ordenes_service.model.Orden;
 import com.imprenta.ordenes_service.model.Producto;
 import com.imprenta.ordenes_service.model.SobranteCliente;
+import com.imprenta.ordenes_service.repository.OrdenRepository;
+import com.imprenta.ordenes_service.repository.ProductoRepository;
 import com.imprenta.ordenes_service.repository.SobranteClienteRepository;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -15,31 +18,39 @@ import java.util.Optional;
 public class SobranteClienteService {
 
     private final SobranteClienteRepository repository;
+    private final OrdenRepository ordenRepository;
+    private final ProductoRepository productoRepository;
 
-    // Inyección por constructor
-    public SobranteClienteService(SobranteClienteRepository repository) {
+    public SobranteClienteService(SobranteClienteRepository repository,
+            OrdenRepository ordenRepository,
+            ProductoRepository productoRepository) {
         this.repository = repository;
+        this.ordenRepository = ordenRepository;
+        this.productoRepository = productoRepository;
     }
 
+    @Transactional(readOnly = true)
     public Page<SobranteCliente> findAll(Pageable pageable) {
         return repository.findAll(pageable);
     }
 
+    @Transactional(readOnly = true)
     public Page<SobranteCliente> findByIdCliente(Integer idCliente, Pageable pageable) {
         return repository.findByIdCliente(idCliente, pageable);
     }
 
+    @Transactional
     public SobranteCliente registrarSobrante(RegistrarSobranteDTO dto) {
         Optional<SobranteCliente> existente = repository.findByIdClienteAndProducto_IdProducto(
                 dto.getIdCliente(), dto.getIdProducto());
+
+        Orden ordenRef = ordenRepository.getReferenceById(dto.getIdOrden());
 
         if (existente.isPresent()) {
             SobranteCliente sobrante = existente.get();
             sobrante.setCantidadDisponible(sobrante.getCantidadDisponible() + dto.getCantidad());
 
-            Orden orden = new Orden();
-            orden.setIdOrden(dto.getIdOrden());
-            sobrante.setOrdenOrigen(orden);
+            sobrante.setOrdenOrigen(ordenRef);
 
             return repository.save(sobrante);
         } else {
@@ -47,18 +58,15 @@ public class SobranteClienteService {
             nuevo.setIdCliente(dto.getIdCliente());
             nuevo.setCantidadDisponible(dto.getCantidad());
 
-            Producto producto = new Producto();
-            producto.setIdProducto(dto.getIdProducto());
-            nuevo.setProducto(producto);
-
-            Orden orden = new Orden();
-            orden.setIdOrden(dto.getIdOrden());
-            nuevo.setOrdenOrigen(orden);
+            Producto productoRef = productoRepository.getReferenceById(dto.getIdProducto());
+            nuevo.setProducto(productoRef);
+            nuevo.setOrdenOrigen(ordenRef);
 
             return repository.save(nuevo);
         }
     }
 
+    @Transactional
     public SobranteCliente consumirSobrante(Integer idSobrante, Integer cantidadConsumida) {
         return repository.findById(idSobrante).map(sobrante -> {
             if (sobrante.getCantidadDisponible() < cantidadConsumida) {
