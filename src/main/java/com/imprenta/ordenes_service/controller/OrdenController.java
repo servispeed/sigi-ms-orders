@@ -287,7 +287,7 @@ public class OrdenController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/clientes-con-adeudo")
+    @GetMapping("/clientes/saldos")
     public ResponseEntity<Page<ClienteConSaldoDTO>> obtenerClientesConSaldoDeudor(
             @PageableDefault(size = 10) Pageable pageable) {
 
