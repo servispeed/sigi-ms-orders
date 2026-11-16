@@ -2,10 +2,10 @@ package com.imprenta.ordenes_service.controller;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
@@ -34,6 +34,7 @@ import com.imprenta.ordenes_service.exception.BadRequestException;
 import com.imprenta.ordenes_service.model.Movimientos;
 import com.imprenta.ordenes_service.model.Orden;
 import com.imprenta.ordenes_service.model.Trazabilidad;
+import com.imprenta.ordenes_service.repository.OrdenRepository;
 import com.imprenta.ordenes_service.service.OrdenService;
 
 @RestController
@@ -41,9 +42,11 @@ import com.imprenta.ordenes_service.service.OrdenService;
 public class OrdenController {
 
     private final OrdenService ordenService;
+    private final OrdenRepository ordenRepository;
 
-    public OrdenController(OrdenService ordenService) {
+    public OrdenController(OrdenService ordenService, OrdenRepository ordenRepository) {
         this.ordenService = ordenService;
+        this.ordenRepository = ordenRepository;
     }
 
     @PostMapping
@@ -61,19 +64,32 @@ public class OrdenController {
 
     }
 
-    @PostMapping("/{idOrden}/pagos")
+    @PostMapping("/pagos")
     public ResponseEntity<Movimientos> registrarMovimiento(
-            @PathVariable Integer idOrden,
             @RequestHeader("X-User-Id") Integer idUsuario,
             @RequestBody Map<String, Object> body) {
 
-        BigDecimal monto = new BigDecimal(body.get("monto").toString());
-        String referencia = (String) body.get("referencia");
+        // 1. Extraer idCliente (Obligatorio)
+        if (!body.containsKey("idCliente") || body.get("idCliente") == null) {
+            throw new BadRequestException("El idCliente es obligatorio para registrar un pago.");
+        }
+        Integer idCliente = Integer.valueOf(body.get("idCliente").toString());
 
-        Movimientos nuevoMovimiento = ordenService.registrarMovimiento(idOrden, monto, referencia, idUsuario);
+        // 2. Extraer idOrden (Opcional)
+        Integer idOrden = null;
+        if (body.containsKey("idOrden") && body.get("idOrden") != null) {
+            idOrden = Integer.valueOf(body.get("idOrden").toString());
+        }
+
+        // 3. Extraer el resto de los datos
+        BigDecimal monto = new BigDecimal(body.get("monto").toString());
+        String referencia = body.containsKey("referencia") ? (String) body.get("referencia") : "Sin referencia";
+
+        // 4. Llamar al servicio actualizado con los 5 parámetros
+        Movimientos nuevoMovimiento = ordenService.registrarMovimiento(idCliente, idOrden, monto, referencia,
+                idUsuario);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(nuevoMovimiento);
-
     }
 
     @PutMapping("/{idOrden}/condicion-pago")
@@ -248,6 +264,29 @@ public class OrdenController {
             @RequestParam(defaultValue = "Mes") String filtro) {
         OrdenesTotalesDTO stats = ordenService.obtenerOrdenesPorPeriodo(filtro);
         return ResponseEntity.ok(stats);
+    }
+
+    @GetMapping("/clientes/{idCliente}/saldo")
+    public ResponseEntity<Map<String, Object>> obtenerSaldoDeudor(@PathVariable Integer idCliente) {
+
+        BigDecimal saldo = ordenService.consultarSaldoCliente(idCliente);
+
+        // Estructuramos la respuesta en un JSON claro
+        Map<String, Object> response = new HashMap<>();
+        response.put("idCliente", idCliente);
+        response.put("saldoDeudor", saldo);
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/cliente/{idCliente}/compras-completadas")
+    public ResponseEntity<Map<String, Integer>> obtenerTotalComprasCompletadas(@PathVariable Integer idCliente) {
+        Integer total = ordenRepository.contarComprasCompletadasPorCliente(idCliente);
+
+        Map<String, Integer> response = new HashMap<>();
+        response.put("totalCompras", total);
+
+        return ResponseEntity.ok(response);
     }
 
 }

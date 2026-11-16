@@ -34,8 +34,11 @@ public class Movimientos {
     @Column(name = "id_usuario_registro", nullable = false)
     private Integer idUsuarioRegistro;
 
-    @Column(name = "id_orden")
+    @Column(name = "id_orden", nullable = true)
     private Integer idOrden;
+
+    @Column(name = "id_cliente", nullable = true)
+    private Integer idCliente;
 
     public Movimientos() {
 
@@ -95,6 +98,14 @@ public class Movimientos {
 
     public void setIdOrden(Integer idOrden) {
         this.idOrden = idOrden;
+    }
+
+    public Integer getIdCliente() {
+        return idCliente;
+    }
+
+    public void setIdCliente(Integer idCliente) {
+        this.idCliente = idCliente;
     }
 
 }
