@@ -4,9 +4,15 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Map;
+import java.util.stream.Collectors;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
+import java.util.stream.Collectors;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.stereotype.Service;
 import com.imprenta.ordenes_service.dto.CrearSolicitudDTO;
 import com.imprenta.ordenes_service.dto.ProductoSolicitudDTO;
@@ -295,8 +301,36 @@ public class ComprasService {
     }
 
     @Transactional(readOnly = true)
-    public List<SolicitudInsumo> obtenerPendientes() {
-        return solicitudInsumoRepository.findWithDetallesByIdEstatusIn(
-                List.of(ESTATUS_PENDIENTE, ESTATUS_ATRASADA));
+    public Page<SolicitudInsumo> obtenerPendientes(Pageable pageable) {
+
+        Page<Integer> idsPage = solicitudInsumoRepository.encontrarIdsPendientes(
+                List.of(ESTATUS_PENDIENTE, ESTATUS_ATRASADA),
+                pageable);
+
+        if (idsPage.isEmpty()) {
+            return new PageImpl<>(
+                    List.of(),
+                    pageable,
+                    idsPage.getTotalElements());
+        }
+
+        List<SolicitudInsumo> solicitudes = solicitudInsumoRepository.findWithDetallesByIdSolicitudIn(
+                idsPage.getContent());
+
+        Map<Integer, SolicitudInsumo> solicitudesMap = solicitudes.stream()
+                .collect(Collectors.toMap(
+                        SolicitudInsumo::getIdSolicitud,
+                        solicitud -> solicitud));
+
+        List<SolicitudInsumo> solicitudesOrdenadas = idsPage.getContent()
+                .stream()
+                .map(solicitudesMap::get)
+                .filter(Objects::nonNull)
+                .toList();
+
+        return new PageImpl<>(
+                solicitudesOrdenadas,
+                pageable,
+                idsPage.getTotalElements());
     }
 }

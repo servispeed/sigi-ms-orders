@@ -5,6 +5,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -145,8 +149,11 @@ public class ComprasController {
     }
 
     @GetMapping("/pendientes")
-    public ResponseEntity<List<SolicitudInsumo>> verPendientes() {
-        return ResponseEntity.ok(comprasService.obtenerPendientes());
+    public ResponseEntity<Page<SolicitudInsumo>> verPendientes(
+            @PageableDefault(size = 10, sort = "fechaCreacion", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        return ResponseEntity.ok(
+                comprasService.obtenerPendientes(pageable));
     }
 
 }
