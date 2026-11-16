@@ -70,24 +70,31 @@ public class OrdenController {
             @RequestBody Map<String, Object> body) {
 
         // 1. Extraer idCliente (Obligatorio)
-        if (!body.containsKey("idCliente") || body.get("idCliente") == null) {
+        if (body.get("idCliente") == null) {
             throw new BadRequestException("El idCliente es obligatorio para registrar un pago.");
         }
         Integer idCliente = Integer.valueOf(body.get("idCliente").toString());
 
         // 2. Extraer idOrden (Opcional)
         Integer idOrden = null;
-        if (body.containsKey("idOrden") && body.get("idOrden") != null) {
+        if (body.get("idOrden") != null) {
             idOrden = Integer.valueOf(body.get("idOrden").toString());
         }
 
-        // 3. Extraer el resto de los datos
+        // 3. Validar y extraer monto (Obligatorio)
+        if (body.get("monto") == null) {
+            throw new BadRequestException("El monto es obligatorio.");
+        }
         BigDecimal monto = new BigDecimal(body.get("monto").toString());
-        String referencia = body.containsKey("referencia") ? (String) body.get("referencia") : "Sin referencia";
 
-        // 4. Llamar al servicio actualizado con los 5 parámetros
-        Movimientos nuevoMovimiento = ordenService.registrarMovimiento(idCliente, idOrden, monto, referencia,
-                idUsuario);
+        // 4. Extraer referencia de forma segura
+        String referencia = (body.get("referencia") != null && !body.get("referencia").toString().isBlank())
+                ? body.get("referencia").toString()
+                : "Sin referencia";
+
+        // 5. Llamar al servicio actualizado
+        Movimientos nuevoMovimiento = ordenService.registrarMovimiento(
+                idCliente, idOrden, monto, referencia, idUsuario);
 
         return ResponseEntity.status(HttpStatus.CREATED).body(nuevoMovimiento);
     }
