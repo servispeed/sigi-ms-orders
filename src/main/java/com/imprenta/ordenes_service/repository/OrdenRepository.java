@@ -227,15 +227,16 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
 
     @Query(value = """
             SELECT
-                o.id_cliente AS idCliente,
+                o.id_cliente AS "idCliente",
                 COALESCE(SUM(o.monto_total), 0) -
                 COALESCE((
                     SELECT SUM(m.monto)
                     FROM movimientos m
                     WHERE m.id_cliente = o.id_cliente
-                ), 0) AS saldoDeudor
+                ), 0) AS "saldoDeudor"
             FROM ordenes o
-            WHERE o.id_estatus_actual >= 2
+            WHERE o.id_cliente IS NOT NULL
+                AND o.id_estatus_actual >= 2
                 AND o.id_estatus_actual != 11
             GROUP BY o.id_cliente
             HAVING
@@ -245,13 +246,14 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
                     FROM movimientos m
                     WHERE m.id_cliente = o.id_cliente
                 ), 0) > 0
-            ORDER BY saldoDeudor DESC
+            ORDER BY "saldoDeudor" DESC
             """, countQuery = """
             SELECT COUNT(*)
             FROM (
                 SELECT o.id_cliente
                 FROM ordenes o
-                WHERE o.id_estatus_actual >= 2
+                WHERE o.id_cliente IS NOT NULL
+                    AND o.id_estatus_actual >= 2
                     AND o.id_estatus_actual != 11
                 GROUP BY o.id_cliente
                 HAVING
