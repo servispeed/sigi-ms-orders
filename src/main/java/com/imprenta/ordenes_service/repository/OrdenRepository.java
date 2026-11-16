@@ -40,6 +40,7 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
                 CASE
                     WHEN ce.id_estatus = 12 THEN 'Completado'
                     WHEN ce.id_estatus = 11 THEN 'Cancelada'
+                    WHEN ce.id_estatus = 6  THEN 'Lista para entrega'
                     ELSE 'En curso'
                 END as estatus,
                 ce.descripcion as descripcionEstatus,
@@ -73,10 +74,11 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
                 (CAST(:fecha AS text) IS NULL OR TO_CHAR(o.fecha_creacion, 'YYYY-MM-DD') LIKE CONCAT(CAST(:fecha AS text), '%'))
                 AND (
                     CAST(:estado AS text) IS NULL
-                    OR CAST(:estado AS text) = 'Todas'
+                    OR (CAST(:estado AS text) = 'Todas' AND ce.id_estatus != 1)
                     OR (CAST(:estado AS text) = 'Completadas' AND ce.id_estatus = 12)
                     OR (CAST(:estado AS text) = 'Canceladas' AND ce.id_estatus = 11)
-                    OR (CAST(:estado AS text) = 'En curso' AND ce.id_estatus NOT IN (11, 12))
+                    OR (CAST(:estado AS text) = 'Listas' AND ce.id_estatus IN (6, 12))
+                    OR (CAST(:estado AS text) = 'En curso' AND ce.id_estatus NOT IN (1,6, 11, 12))
                 )
                 AND (
                     CAST(:busqueda AS text) IS NULL
@@ -101,10 +103,11 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
                 (CAST(:fecha AS text) IS NULL OR TO_CHAR(o.fecha_creacion, 'YYYY-MM-DD') LIKE CONCAT(CAST(:fecha AS text), '%'))
                 AND (
                     CAST(:estado AS text) IS NULL
-                    OR CAST(:estado AS text) = 'Todas'
+                    OR (CAST(:estado AS text) = 'Todas' AND ce.id_estatus != 1)
                     OR (CAST(:estado AS text) = 'Completadas' AND ce.id_estatus = 12)
                     OR (CAST(:estado AS text) = 'Canceladas' AND ce.id_estatus = 11)
-                    OR (CAST(:estado AS text) = 'En curso' AND ce.id_estatus NOT IN (11, 12))
+                    OR (CAST(:estado AS text) = 'Listas' AND ce.id_estatus IN (6, 12))
+                    OR (CAST(:estado AS text) = 'En curso' AND ce.id_estatus NOT IN (1, 6, 11, 12))
                 )
                 AND (
                     CAST(:busqueda AS text) IS NULL
@@ -210,6 +213,16 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
     List<Orden> findCotizacionesPorRangoParaGrafica(@Param("inicio") LocalDateTime inicio,
             @Param("fin") LocalDateTime fin);
 
-    @Query("SELECT COALESCE(SUM(o.montoTotal - COALESCE(o.montoPagado, 0)), 0) FROM Orden o WHERE o.idCliente = :idCliente AND o.idCondicionPago = 5 AND o.idEstatusActual != 99")
+    @Query(value = "SELECT " +
+            "COALESCE((SELECT SUM(monto_total) FROM ordenes WHERE id_cliente = :idCliente AND id_estatus_actual >= 2 AND id_estatus_actual != 11), 0) - "
+            +
+            "COALESCE((SELECT SUM(monto) FROM movimientos WHERE id_cliente = :idCliente), 0)", nativeQuery = true)
     BigDecimal calcularSaldoDeudor(@Param("idCliente") Integer idCliente);
+
+    @Query(value = "SELECT DISTINCT id_cliente FROM ordenes WHERE fecha_vencimiento < CURRENT_TIMESTAMP AND id_estatus_actual NOT IN (1, 11)", nativeQuery = true)
+    List<Integer> encontrarClientesConOrdenesVencidas();
+
+    @Query("SELECT COUNT(o) FROM Orden o WHERE o.idCliente = :idCliente AND o.idEstatusActual = 12")
+    Integer contarComprasCompletadasPorCliente(@Param("idCliente") Integer idCliente);
+
 }

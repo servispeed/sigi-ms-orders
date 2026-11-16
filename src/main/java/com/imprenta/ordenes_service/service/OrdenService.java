@@ -84,58 +84,56 @@ public class OrdenService {
     public Orden crearCotizacion(CrearOrdenDTO dto) {
         Orden ordenDatos = dto.getOrden();
 
-        if (ordenDatos.getIdCondicionPago() != null && ordenDatos.getIdCondicionPago().equals(ID_CONDICION_CREDITO)) {
-            ClienteDTO cliente = personasClient.obtenerClientePorId(ordenDatos.getIdCliente());
+        // 1. REGLA DE NEGOCIO: Toda cotización nace estrictamente como Contado (1)
+        // Interceptamos lo que mande el frontend y lo forzamos a 1.
+        ordenDatos.setIdCondicionPago(1);
 
-            if (cliente.getCreditoHabilitado() == null || !cliente.getCreditoHabilitado()) {
-                throw new BadRequestException("Transacción rechazada: El cliente no tiene crédito habilitado.");
-            }
+        // 2. Al ser contado por defecto, el vencimiento es inmediato
+        ordenDatos.setFechaVencimiento(java.time.LocalDateTime.now());
 
-            if ("ATRASADO".equalsIgnoreCase(cliente.getEstatusCredito())) {
-                throw new BadRequestException(
-                        "Transacción rechazada: El cliente tiene un estatus de crédito ATRASADO.");
-            }
-
-            // 3. Validar el límite de crédito disponible con la deuda real
-            BigDecimal limiteCredito = cliente.getLimiteCredito() != null ? cliente.getLimiteCredito()
-                    : BigDecimal.ZERO;
-            BigDecimal saldoDeudor = ordenRepository.calcularSaldoDeudor(ordenDatos.getIdCliente());
-            BigDecimal creditoDisponible = limiteCredito.subtract(saldoDeudor);
-            BigDecimal montoOrden = ordenDatos.getMontoTotal() != null ? ordenDatos.getMontoTotal() : BigDecimal.ZERO;
-
-            if (montoOrden.compareTo(creditoDisponible) > 0) {
-                throw new BadRequestException(
-                        String.format(
-                                "Transacción rechazada: El monto de la orden ($%s) sumado a la deuda actual ($%s) supera el límite de crédito del cliente ($%s).",
-                                montoOrden, saldoDeudor, limiteCredito));
-            }
-
-            Integer dias = cliente.getDiasCredito() != null ? cliente.getDiasCredito() : 0;
-            ordenDatos.setFechaVencimiento(java.time.LocalDateTime.now().plusDays(dias));
-        } else {
-            ordenDatos.setFechaVencimiento(java.time.LocalDateTime.now());
-        }
+        // 3. Generar la orden con sus detalles (productos, cantidades, etc.)
         Orden nuevaOrden = cotizacionHelper.generarCotizacion(
-                dto.getOrden(),
+                ordenDatos,
                 dto.getDetalles());
 
+        // 4. Registrar en la trazabilidad que la orden nació (Estatus 1 - Cotización)
         trazabilidadHelper.registrarCambio(
                 nuevaOrden.getIdOrden(),
                 ESTATUS_INICIAL,
                 dto.getIdUsuarioAccion());
+
         return nuevaOrden;
     }
 
     @Transactional
-    public Movimientos registrarMovimiento(Integer idOrden, BigDecimal monto, String referencia, Integer idUsuario) {
-        Movimientos movimiento = movimientosHelper.registrarAbono(idOrden, monto, referencia, idUsuario);
+    public Movimientos registrarMovimiento(Integer idCliente, Integer idOrden, BigDecimal monto, String referencia,
+            Integer idUsuario) {
 
+        // 1. El helper ahora debe recibir el idCliente (obligatorio) y el idOrden
+        // (opcional)
+        Movimientos movimiento = movimientosHelper.registrarAbono(idCliente, idOrden, monto, referencia, idUsuario);
+
+        // 2. Construir un mensaje dinámico dependiendo de si es abono global o de orden
+        String tituloNotificacion;
+        String cuerpoNotificacion;
+
+        if (idOrden != null) {
+            tituloNotificacion = "Pago Registrado - Orden #" + idOrden;
+            cuerpoNotificacion = "Se registró un pago de $" + monto + " referenciado a la orden #" + idOrden + ".";
+        } else {
+            tituloNotificacion = "Abono Global Registrado";
+            cuerpoNotificacion = "Se registró un abono a cuenta de $" + monto + " para el cliente ID " + idCliente
+                    + ".";
+        }
+
+        // 3. Enviar la notificación (Cambié la clave a PAGO_REGISTRADO para que cubra
+        // ambos casos)
         notificationService.notificarARoles(
                 String.valueOf(idUsuario),
                 List.of("CONTADORA", "JEFE DE TALLER", "DISEÑADOR", "DUEÑO"),
-                "COTIZACION_PAGADA",
-                "Cotización Pagada - Orden #" + idOrden,
-                "Se registró un pago de $" + monto + " para la orden #" + idOrden + ".");
+                "PAGO_REGISTRADO",
+                tituloNotificacion,
+                cuerpoNotificacion);
 
         return movimiento;
     }
@@ -290,9 +288,59 @@ public class OrdenService {
         return trazabilidadHelper.obtenerHistorial(idOrden);
     }
 
+    /*
+     * public Orden actualizarCondicionPago(Integer idOrden, Integer nuevaCondicion)
+     * {
+     * Orden orden = ordenRepository.findById(idOrden)
+     * .orElseThrow(() -> new
+     * ResourceNotFoundException("Orden no encontrada con ID: " + idOrden));
+     *
+     * orden.setIdCondicionPago(nuevaCondicion);
+     * return ordenRepository.save(orden);
+     * }
+     */
+
     public Orden actualizarCondicionPago(Integer idOrden, Integer nuevaCondicion) {
         Orden orden = ordenRepository.findById(idOrden)
                 .orElseThrow(() -> new ResourceNotFoundException("Orden no encontrada con ID: " + idOrden));
+
+        if (nuevaCondicion != null && nuevaCondicion == 5) {
+            if (orden.getIdEstatusActual() == null || orden.getIdEstatusActual() != 2) {
+                throw new BadRequestException(
+                        "Transacción rechazada: Solo se puede pasar a crédito si la orden está en estatus 2");
+            }
+
+            ClienteDTO cliente = personasClient.obtenerClientePorId(orden.getIdCliente());
+
+            if (cliente.getCreditoHabilitado() == null || !cliente.getCreditoHabilitado()) {
+                throw new BadRequestException("Transacción rechazada: El cliente no tiene crédito habilitado.");
+            }
+
+            if ("ATRASADO".equalsIgnoreCase(cliente.getEstatusCredito())) {
+                throw new BadRequestException("Transacción rechazada: El cliente tiene un estatus de crédito ATRASADO");
+            }
+
+            BigDecimal limiteCredito = cliente.getLimiteCredito() != null ? cliente.getLimiteCredito()
+                    : BigDecimal.ZERO;
+            BigDecimal saldoDeudor = ordenRepository.calcularSaldoDeudor(orden.getIdCliente());
+            if (saldoDeudor == null)
+                saldoDeudor = BigDecimal.ZERO;
+
+            BigDecimal credittoDisponible = limiteCredito.subtract(saldoDeudor);
+            BigDecimal montoOrden = orden.getMontoTotal() != null ? orden.getMontoTotal() : BigDecimal.ZERO;
+
+            if (montoOrden.compareTo(credittoDisponible) > 0) {
+                throw new BadRequestException(String.format(
+                        "Transacción rechazada: El monto de la orden ($%s) sumado a la deuda actual ($%s) supera el limite de crédito ($%s).",
+                        montoOrden, saldoDeudor, limiteCredito));
+            }
+
+            Integer dias = cliente.getDiasCredito() != null ? cliente.getDiasCredito() : 0;
+            orden.setFechaVencimiento(java.time.LocalDateTime.now().plusDays(dias));
+
+        } else if (nuevaCondicion != null && nuevaCondicion == 1) {
+            orden.setFechaVencimiento(java.time.LocalDateTime.now());
+        }
 
         orden.setIdCondicionPago(nuevaCondicion);
         return ordenRepository.save(orden);
@@ -387,4 +435,10 @@ public class OrdenService {
         return new OrdenesTotalesDTO(filtroTiempo, conteo, sumaDinero);
     }
 
+    public BigDecimal consultarSaldoCliente(Integer idCliente) {
+        BigDecimal saldo = ordenRepository.calcularSaldoDeudor(idCliente);
+        // Si el cliente no tiene órdenes ni pagos, el repo podría devolver null, lo
+        // protegemos:
+        return saldo != null ? saldo : BigDecimal.ZERO;
+    }
 }
