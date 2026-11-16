@@ -59,7 +59,8 @@ public class OrdenService {
     private static final String ESTATUS_INICIAL = "COT_INICIADA";
     private static final Integer ID_ESTATUS_CANCELADA = 11;
     private static final Integer ID_CONDICION_CREDITO = 5;
-    private final List<Integer> IDS_NO_ORDENES = Arrays.asList(1, 6, 11, 12);
+    private final List<Integer> IDS_NO_ORDENES = Arrays.asList(1, 11);
+    private final List<Integer> IDS_NO_ORDENES_DISENADOR = Arrays.asList(1, 6, 11, 12);
 
     public OrdenService(OrdenRepository ordenRepository,
             CotizacionHelper cotizacionHelper,
@@ -352,7 +353,7 @@ public class OrdenService {
     public Page<Orden> obtenerPendientesDiseñador(Integer idDisenador, Pageable pageable) {
         return ordenRepository.findByIdUsuarioDisenadorAndIdEstatusActualNotIn(
                 idDisenador,
-                IDS_NO_ORDENES,
+                IDS_NO_ORDENES_DISENADOR,
                 pageable);
     }
 
