@@ -5,6 +5,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.imprenta.ordenes_service.client.PersonasClient;
+import com.imprenta.ordenes_service.dto.ClienteConSaldoDTO;
 import com.imprenta.ordenes_service.dto.ClienteDTO;
 import com.imprenta.ordenes_service.dto.CrearOrdenDTO;
 import com.imprenta.ordenes_service.dto.reportes.OrdenCardDTO;
@@ -33,6 +35,7 @@ import com.imprenta.ordenes_service.model.Movimientos;
 import com.imprenta.ordenes_service.model.Orden;
 import com.imprenta.ordenes_service.model.Trazabilidad;
 import com.imprenta.ordenes_service.repository.CatEstatusRepository;
+import com.imprenta.ordenes_service.repository.ClienteSaldoProjection;
 import com.imprenta.ordenes_service.repository.OrdenRepository;
 import com.imprenta.ordenes_service.service.states.OrdenState;
 import com.imprenta.ordenes_service.service.states.OrdenStateFactory;
@@ -56,7 +59,7 @@ public class OrdenService {
     private static final String ESTATUS_INICIAL = "COT_INICIADA";
     private static final Integer ID_ESTATUS_CANCELADA = 11;
     private static final Integer ID_CONDICION_CREDITO = 5;
-    private final List<Integer> IDS_NO_ORDENES = Arrays.asList(1, 11);
+    private final List<Integer> IDS_NO_ORDENES = Arrays.asList(1, 6, 11, 12);
 
     public OrdenService(OrdenRepository ordenRepository,
             CotizacionHelper cotizacionHelper,
@@ -440,5 +443,20 @@ public class OrdenService {
         // Si el cliente no tiene órdenes ni pagos, el repo podría devolver null, lo
         // protegemos:
         return saldo != null ? saldo : BigDecimal.ZERO;
+    }
+
+    public Page<ClienteConSaldoDTO> obtenerClientesConSaldoDeudor(Pageable pageable) {
+
+        Page<ClienteSaldoProjection> clientesConSaldo = ordenRepository.encontrarClientesConSaldoDeudor(pageable);
+
+        return clientesConSaldo.map(registro -> {
+            ClienteDTO cliente = personasClient.obtenerClientePorId(
+                    registro.getIdCliente());
+
+            return new ClienteConSaldoDTO(
+                    registro.getIdCliente(),
+                    cliente,
+                    registro.getSaldoDeudor());
+        });
     }
 }
