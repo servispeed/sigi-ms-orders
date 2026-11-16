@@ -31,17 +31,15 @@ public class EstadoOrdenListaEntrega implements OrdenState {
     @Override
     public Integer procesarSiguientePaso(Orden orden, Integer idUsuario, Map<String, Object> params) {
 
+        // 1. Mantenemos intactas las reglas de seguridad
         securityHelper.validarPermiso(idUsuario,
                 SecurityHelper.ROL_MOSTRADOR,
                 SecurityHelper.ROL_JEFE_TALLER);
 
-        BigDecimal total = orden.getMontoTotal();
-        BigDecimal pagado = orden.getMontoPagado() == null ? BigDecimal.ZERO : orden.getMontoPagado();
+        // SE ELIMINÓ LA RESTRICCIÓN DE PAGO (pagado.compareTo(total) < 0)
+        // Ahora el mostrador puede entregar la orden físicamente aunque deba el total.
+        // La deuda sigue viva en el "saldo global" del cliente.
 
-        if (pagado.compareTo(total) < 0) {
-            BigDecimal deuda = total.subtract(pagado);
-            throw new BadRequestException("NO SE PUEDE ENTREGAR. El cliente tiene un saldo pendiente de: $" + deuda);
-        }
         return ID_FINALIZADA;
     }
 }

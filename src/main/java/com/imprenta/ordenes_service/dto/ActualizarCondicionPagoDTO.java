@@ -3,6 +3,13 @@ package com.imprenta.ordenes_service.dto;
 public class ActualizarCondicionPagoDTO {
     private Integer idCondicionPago;
 
+    public ActualizarCondicionPagoDTO() {
+    }
+
+    public ActualizarCondicionPagoDTO(Integer idCondicionPago) {
+        this.idCondicionPago = idCondicionPago;
+    }
+
     public Integer getIdCondicionPago() {
         return idCondicionPago;
     }
@@ -10,9 +17,4 @@ public class ActualizarCondicionPagoDTO {
     public void setIdCondicionPago(Integer idCondicionPago) {
         this.idCondicionPago = idCondicionPago;
     }
-
-    public ActualizarCondicionPagoDTO(Integer idCondicionPago) {
-        this.idCondicionPago = idCondicionPago;
-    }
-
 }
