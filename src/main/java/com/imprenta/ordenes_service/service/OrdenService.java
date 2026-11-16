@@ -446,15 +446,20 @@ public class OrdenService {
     }
 
     public Page<ClienteConSaldoDTO> obtenerClientesConSaldoDeudor(Pageable pageable) {
-
         Page<ClienteSaldoProjection> clientesConSaldo = ordenRepository.encontrarClientesConSaldoDeudor(pageable);
 
         return clientesConSaldo.map(registro -> {
-            ClienteDTO cliente = personasClient.obtenerClientePorId(
-                    registro.getIdCliente());
+            Integer idCliente = registro.getIdCliente();
+
+            if (idCliente == null) {
+                throw new IllegalStateException(
+                        "Se encontró un cliente sin identificador en la consulta de saldos");
+            }
+
+            ClienteDTO cliente = personasClient.obtenerClientePorId(idCliente);
 
             return new ClienteConSaldoDTO(
-                    registro.getIdCliente(),
+                    idCliente,
                     cliente,
                     registro.getSaldoDeudor());
         });
