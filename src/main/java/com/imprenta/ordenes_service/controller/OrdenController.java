@@ -25,6 +25,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 
 import com.imprenta.ordenes_service.dto.ActualizarCondicionPagoDTO;
 import com.imprenta.ordenes_service.dto.CambiarEstatusDTO;
+import com.imprenta.ordenes_service.dto.ClienteConSaldoDTO;
 import com.imprenta.ordenes_service.dto.CrearOrdenDTO;
 import com.imprenta.ordenes_service.dto.NotasDisenoDTO;
 import com.imprenta.ordenes_service.dto.reportes.HistorialOrdenDTO;
@@ -284,6 +285,14 @@ public class OrdenController {
         response.put("saldoDeudor", saldo);
 
         return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/clientes-con-adeudo")
+    public ResponseEntity<Page<ClienteConSaldoDTO>> obtenerClientesConSaldoDeudor(
+            @PageableDefault(size = 10) Pageable pageable) {
+
+        return ResponseEntity.ok(
+                ordenService.obtenerClientesConSaldoDeudor(pageable));
     }
 
     @GetMapping("/cliente/{idCliente}/compras-completadas")
