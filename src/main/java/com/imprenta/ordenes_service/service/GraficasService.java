@@ -45,6 +45,7 @@ public class GraficasService {
     private final MovimientoRepository movimientoRepository;
     private final CatTipoMovimientoRepository catTipoMovimientoRepository;
     private static final List<Integer> IDS_TIPOS_EGRESOS = List.of(2, 3, 4, 5);
+    private static final List<Integer> IDS_TODOS_MOVIMIENTOS = List.of(1, 2, 3, 4, 5);
 
     @Autowired
     public GraficasService(OrdenRepository ordenRepository, MovimientoRepository movimientoRepository,
@@ -433,115 +434,108 @@ public class GraficasService {
     }
 
     public List<MovimientoTablaDTO> obtenerTablaFLujoCaja(String filtroTiempo) {
-        LocalDateTime ahora = LocalDateTime.now();
-        LocalDateTime inicio = ahora;
-        LocalDateTime fin = ahora;
-        String filtro = filtroTiempo != null ? filtroTiempo.toLowerCase() : "mes";
-
-        if ("hoy".equals(filtro) || "dia".equals(filtro)) {
-            inicio = ahora.with(LocalTime.MIN);
-            fin = ahora.with(LocalTime.MAX);
-        } else if ("semana".equals(filtro)) {
-            inicio = ahora.with(java.time.DayOfWeek.MONDAY).with(LocalTime.MIN);
-            fin = ahora.with(java.time.DayOfWeek.SUNDAY).with(LocalTime.MAX);
-        } else if ("mes".equals(filtro)) {
-            inicio = ahora.withDayOfMonth(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()).with(LocalTime.MAX);
-        } else if ("año".equals(filtro) || "anio".equals(filtro)) {
-            inicio = ahora.withDayOfYear(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfYear()).with(LocalTime.MAX);
-        }
-
-        List<Orden> ordenes = ordenRepository.findOrdenesPorRangoParaGrafica(inicio, fin);
-        List<Movimientos> egresos = movimientoRepository.findEgresosPorRango(IDS_TIPOS_EGRESOS, inicio, fin);
+        LocalDateTime[] rango = calcularRangoFechas(filtroTiempo);
+        List<Movimientos> movimientos = movimientoRepository.findEgresosPorRango(
+                IDS_TODOS_MOVIMIENTOS, rango[0], rango[1]);
 
         List<MovimientoTablaDTO> tablaFlujo = new ArrayList<>();
 
-        for (Orden o : ordenes) {
-            String concepto = "Orden #" + o.getIdOrden();
-            BigDecimal monto = o.getMontoPagado() != null ? o.getMontoPagado() : BigDecimal.ZERO;
-            String usuario = String.valueOf(o.getIdUsuario());
+        for (Movimientos m : movimientos) {
+            if (m.getMonto() == null) continue;
 
-            tablaFlujo.add(new MovimientoTablaDTO(o.getFechaCreacion(), concepto, "Ingreso", monto, usuario));
-        }
-        for (Movimientos m : egresos) {
-            BigDecimal monto = m.getMonto() != null ? m.getMonto() : BigDecimal.ZERO;
+            BigDecimal monto = m.getMonto();
             String usuario = String.valueOf(m.getIdUsuarioRegistro());
+            Integer tipo = m.getIdTipoMovimiento();
+            String tipoMov;
 
-            String tipoMov = "Egreso";
-
-            if (m.getIdTipoMovimiento() != null && m.getIdTipoMovimiento() == 5) {
+            if (tipo != null && tipo == 1) {
+                tipoMov = "Ingreso";
+                monto = monto.abs();
+            } else if (tipo != null && tipo == 5) {
                 if (monto.compareTo(BigDecimal.ZERO) < 0) {
                     tipoMov = "Ingreso (Ajuste)";
                     monto = monto.abs();
                 } else {
                     tipoMov = "Egreso (Ajuste)";
                 }
+            } else {
+                tipoMov = "Egreso";
+                monto = monto.abs(); // Evita signos negativos dobles si en BD se guardó como -110.00
             }
 
-            tablaFlujo.add(new MovimientoTablaDTO(m.getFechaMovimiento(), m.getConcepto(), tipoMov, monto, usuario));
+            tablaFlujo.add(new MovimientoTablaDTO(
+                    m.getFechaMovimiento(),
+                    m.getConcepto(),
+                    tipoMov,
+                    monto,
+                    usuario
+            ));
         }
 
         tablaFlujo.sort((mov1, mov2) -> mov2.getFecha().compareTo(mov1.getFecha()));
-
         return tablaFlujo;
     }
 
     public FlujoCajaDTO obtenerFlujoCaja(String filtroTiempo) {
-        LocalDateTime ahora = LocalDateTime.now();
-        LocalDateTime inicio = ahora;
-        LocalDateTime fin = ahora;
-        String filtro = filtroTiempo != null ? filtroTiempo.toLowerCase() : "mes";
+        LocalDateTime[] rango = calcularRangoFechas(filtroTiempo);
+        List<Movimientos> movimientos = movimientoRepository.findEgresosPorRango(
+                IDS_TODOS_MOVIMIENTOS, rango[0], rango[1]);
 
-        if ("hoy".equals(filtro) || "dia".equals(filtro)) {
-            inicio = ahora.with(LocalTime.MIN);
-            fin = ahora.with(LocalTime.MAX);
-        } else if ("semana".equals(filtro)) {
-            inicio = ahora.with(java.time.DayOfWeek.MONDAY).with(LocalTime.MIN);
-            fin = ahora.with(java.time.DayOfWeek.SUNDAY).with(LocalTime.MAX);
-        } else if ("mes".equals(filtro)) {
-            inicio = ahora.withDayOfMonth(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()).with(LocalTime.MAX);
-        } else if ("año".equals(filtro) || "anio".equals(filtro)) {
-            inicio = ahora.withDayOfYear(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfYear()).with(LocalTime.MAX);
+        BigDecimal totalIngresos = BigDecimal.ZERO;
+        BigDecimal entradaCaja = BigDecimal.ZERO;
+        BigDecimal totalEgresos = BigDecimal.ZERO;
+
+        for (Movimientos m : movimientos) {
+            if (m.getMonto() == null || m.getIdTipoMovimiento() == null) continue;
+
+            int tipo = m.getIdTipoMovimiento();
+            BigDecimal monto = m.getMonto();
+
+            if (tipo == 1) {
+                totalIngresos = totalIngresos.add(monto.abs());
+            } else if (tipo == 5) {
+                if (monto.compareTo(BigDecimal.ZERO) < 0) {
+                    entradaCaja = entradaCaja.add(monto.abs());
+                } else {
+                    totalEgresos = totalEgresos.add(monto);
+                }
+            } else {
+                totalEgresos = totalEgresos.add(monto.abs());
+            }
         }
 
-        List<Orden> ordenes = ordenRepository.findOrdenesPorRangoParaGrafica(inicio, fin);
-        List<Movimientos> egresos = movimientoRepository.findEgresosPorRango(IDS_TIPOS_EGRESOS, inicio, fin);
-
-        BigDecimal totalIngresos = ordenes.stream()
-                .map(o -> o.getMontoPagado() != null ? o.getMontoPagado() : BigDecimal.ZERO)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal entradaCaja = egresos.stream()
-                .filter(m -> m.getIdTipoMovimiento() != null && m.getIdTipoMovimiento() == 5)
-                .filter(m -> m.getMonto() != null && m.getMonto().compareTo(BigDecimal.ZERO) < 0)
-                .map(m -> m.getMonto().abs())
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        BigDecimal totalEgresos = egresos.stream()
-                .filter(m -> {
-                    if (m.getMonto() == null)
-                        return false;
-                    if (m.getIdTipoMovimiento() != null && m.getIdTipoMovimiento() == 5
-                            && m.getMonto().compareTo(BigDecimal.ZERO) < 0) {
-                        return false;
-                    }
-                    return true;
-                })
-                .map(Movimientos::getMonto)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
         BigDecimal balance = totalIngresos.add(entradaCaja).subtract(totalEgresos);
-
         return new FlujoCajaDTO(totalIngresos, entradaCaja, totalEgresos, balance);
+    }
+
+    private LocalDateTime[] calcularRangoFechas(String filtroTiempo) {
+        LocalDateTime ahora = LocalDateTime.now();
+        String filtro = filtroTiempo != null ? filtroTiempo.toLowerCase() : "mes";
+
+        return switch (filtro) {
+            case "hoy", "dia" -> new LocalDateTime[]{
+                    ahora.with(LocalTime.MIN),
+                    ahora.with(LocalTime.MAX)
+            };
+            case "semana" -> new LocalDateTime[]{
+                    ahora.with(DayOfWeek.MONDAY).with(LocalTime.MIN),
+                    ahora.with(DayOfWeek.SUNDAY).with(LocalTime.MAX)
+            };
+            case "año", "anio" -> new LocalDateTime[]{
+                    ahora.withDayOfYear(1).with(LocalTime.MIN),
+                    ahora.with(TemporalAdjusters.lastDayOfYear()).with(LocalTime.MAX)
+            };
+            default -> new LocalDateTime[]{
+                    ahora.withDayOfMonth(1).with(LocalTime.MIN),
+                    ahora.with(TemporalAdjusters.lastDayOfMonth()).with(LocalTime.MAX)
+            };
+        };
     }
 
     public DashboardFinanzasDTO obtenerGraficaFinanzas(String filtroTiempo) {
         LocalDateTime ahora = LocalDateTime.now();
-        LocalDateTime inicio = ahora;
-        LocalDateTime fin = ahora;
+        LocalDateTime inicio;
+        LocalDateTime fin;
         String filtro = filtroTiempo != null ? filtroTiempo.toLowerCase() : "semana";
 
         Map<String, GraficaFinanzasDTO> graficaMap = new LinkedHashMap<>();
@@ -556,7 +550,7 @@ public class GraficasService {
             }
         } else if ("mes".equals(filtro)) {
             inicio = ahora.withDayOfMonth(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()).with(LocalTime.MAX);
+            fin = ahora.with(TemporalAdjusters.lastDayOfMonth()).with(LocalTime.MAX);
 
             for (int i = 1; i <= 5; i++) {
                 String label = "S" + i;
@@ -564,7 +558,7 @@ public class GraficasService {
             }
         } else {
             inicio = ahora.with(DayOfWeek.MONDAY).with(LocalTime.MIN);
-            fin = ahora.with(DayOfWeek.SATURDAY).with(LocalTime.MAX);
+            fin = ahora.with(DayOfWeek.SUNDAY).with(LocalTime.MAX);
 
             for (DayOfWeek day : DayOfWeek.values()) {
                 String label = day.getDisplayName(TextStyle.SHORT, new Locale("es", "MX"));
@@ -572,40 +566,44 @@ public class GraficasService {
                 graficaMap.put(label, new GraficaFinanzasDTO(label, BigDecimal.ZERO, BigDecimal.ZERO));
             }
         }
-        List<Orden> ordenes = ordenRepository.findOrdenesPorRangoParaGrafica(inicio, fin);
-        List<Movimientos> movimientosBD = movimientoRepository.findEgresosPorRango(IDS_TIPOS_EGRESOS, inicio, fin);
 
-        BigDecimal balanceTotal = BigDecimal.ZERO;
+        List<Movimientos> movimientosBD = movimientoRepository.findEgresosPorRango(
+                IDS_TODOS_MOVIMIENTOS, inicio, fin);
+
         BigDecimal ingresosTotales = BigDecimal.ZERO;
         BigDecimal egresosTotales = BigDecimal.ZERO;
 
-        for (Orden o : ordenes) {
-            if (o.getMontoPagado() != null) {
-                String label = obtenerEtiqueta(o.getFechaCreacion(), filtro);
-                graficaMap.putIfAbsent(label, new GraficaFinanzasDTO(label, BigDecimal.ZERO, BigDecimal.ZERO));
-
-                graficaMap.get(label).sumarIngreso(o.getMontoPagado());
-                ingresosTotales = ingresosTotales.add(o.getMontoPagado());
-            }
-        }
-
         for (Movimientos m : movimientosBD) {
-            if (m.getMonto() == null)
-                continue;
-
-            if (m.getIdTipoMovimiento() != null && m.getIdTipoMovimiento() == 5
-                    && m.getMonto().compareTo(BigDecimal.ZERO) < 0) {
+            if (m.getMonto() == null || m.getIdTipoMovimiento() == null) {
                 continue;
             }
 
+            int tipo = m.getIdTipoMovimiento();
+            BigDecimal monto = m.getMonto();
             String label = obtenerEtiqueta(m.getFechaMovimiento(), filtro);
             graficaMap.putIfAbsent(label, new GraficaFinanzasDTO(label, BigDecimal.ZERO, BigDecimal.ZERO));
 
-            graficaMap.get(label).sumarEgreso(m.getMonto());
-            egresosTotales = egresosTotales.add(m.getMonto());
+            if (tipo == 1) {
+                // Ingresos por pagos de órdenes y abonos globales a cuenta
+                BigDecimal ingreso = monto.abs();
+                graficaMap.get(label).sumarIngreso(ingreso);
+                ingresosTotales = ingresosTotales.add(ingreso);
+
+            } else if (tipo == 5 && monto.compareTo(BigDecimal.ZERO) < 0) {
+                // Ajuste de caja a favor (entrada de efectivo)
+                BigDecimal entrada = monto.abs();
+                graficaMap.get(label).sumarIngreso(entrada);
+                ingresosTotales = ingresosTotales.add(entrada);
+
+            } else {
+                // Egresos (tipos 2, 3, 4 y ajustes de salida tipo 5 >= 0)
+                BigDecimal egreso = monto.abs();
+                graficaMap.get(label).sumarEgreso(egreso);
+                egresosTotales = egresosTotales.add(egreso);
+            }
         }
 
-        balanceTotal = ingresosTotales.subtract(egresosTotales);
+        BigDecimal balanceTotal = ingresosTotales.subtract(egresosTotales);
 
         return new DashboardFinanzasDTO(balanceTotal, new ArrayList<>(graficaMap.values()));
     }
