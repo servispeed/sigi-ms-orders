@@ -5,7 +5,6 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.temporal.TemporalAdjusters;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -21,6 +20,7 @@ import com.imprenta.ordenes_service.client.PersonasClient;
 import com.imprenta.ordenes_service.dto.ClienteConSaldoDTO;
 import com.imprenta.ordenes_service.dto.ClienteDTO;
 import com.imprenta.ordenes_service.dto.CrearOrdenDTO;
+import com.imprenta.ordenes_service.dto.reportes.HistorialOrdenDTO;
 import com.imprenta.ordenes_service.dto.reportes.OrdenCardDTO;
 import com.imprenta.ordenes_service.dto.reportes.OrdenesTotalesDTO;
 import com.imprenta.ordenes_service.exception.BadRequestException;
@@ -39,7 +39,6 @@ import com.imprenta.ordenes_service.repository.ClienteSaldoProjection;
 import com.imprenta.ordenes_service.repository.OrdenRepository;
 import com.imprenta.ordenes_service.service.states.OrdenState;
 import com.imprenta.ordenes_service.service.states.OrdenStateFactory;
-import com.imprenta.ordenes_service.dto.reportes.HistorialOrdenDTO;
 
 import jakarta.transaction.Transactional;
 
@@ -55,6 +54,7 @@ public class OrdenService {
     private final CatEstatusRepository catEstatusRepository;
     private final NotificationService notificationService;
     private final PersonasClient personasClient;
+    private final MorosidadService morosidadService;
 
     private static final String ESTATUS_INICIAL = "COT_INICIADA";
     private static final Integer ID_ESTATUS_CANCELADA = 11;
@@ -71,7 +71,8 @@ public class OrdenService {
             SecurityHelper securityHelper,
             CatEstatusRepository catEstatusRepository,
             NotificationService notificationService,
-            PersonasClient personasClient) {
+            PersonasClient personasClient,
+            MorosidadService morosidadService) {
         this.ordenRepository = ordenRepository;
         this.cotizacionHelper = cotizacionHelper;
         this.trazabilidadHelper = trazabilidadHelper;
@@ -82,6 +83,7 @@ public class OrdenService {
         this.catEstatusRepository = catEstatusRepository;
         this.notificationService = notificationService;
         this.personasClient = personasClient;
+        this.morosidadService = morosidadService;
     }
 
     @Transactional
@@ -116,6 +118,8 @@ public class OrdenService {
         // 1. El helper ahora debe recibir el idCliente (obligatorio) y el idOrden
         // (opcional)
         Movimientos movimiento = movimientosHelper.registrarAbono(idCliente, idOrden, monto, referencia, idUsuario);
+
+        morosidadService.evaluarYActualizarEstatusCliente(idCliente);
 
         // 2. Construir un mensaje dinámico dependiendo de si es abono global o de orden
         String tituloNotificacion;

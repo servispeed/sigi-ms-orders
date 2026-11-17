@@ -86,82 +86,63 @@ public class GraficasService {
 
     public DashboardIngresosDTO obtenerDashboardIngresos(String filtroTiempo) {
         LocalDateTime ahora = LocalDateTime.now();
-        LocalTime inicioDia = LocalTime.of(0, 0, 0);
-        LocalTime finDia = LocalTime.of(23, 59, 59);
+        LocalDateTime[] rango = calcularRangoFechas(filtroTiempo);
+        String filtro = filtroTiempo != null ? filtroTiempo.toLowerCase() : "mes";
 
-        LocalDateTime inicio;
-        LocalDateTime fin;
+        List<Movimientos> movimientosBD = movimientoRepository.findEgresosPorRango(
+                IDS_TODOS_MOVIMIENTOS, rango[0], rango[1]);
 
-        switch (filtroTiempo.toLowerCase()) {
-            case "hoy":
-            case "dia":
-                inicio = ahora.with(inicioDia);
-                fin = ahora.with(finDia);
-                break;
-            case "semana":
-                inicio = ahora.with(java.time.DayOfWeek.MONDAY).with(inicioDia);
-                fin = ahora.with(java.time.DayOfWeek.SUNDAY).with(finDia);
-                break;
-            case "año":
-            case "anio":
-                inicio = ahora.withDayOfYear(1).with(inicioDia);
-                fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfYear()).with(finDia);
-                break;
-            case "mes":
-            default:
-                inicio = ahora.withDayOfMonth(1).with(inicioDia);
-                fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()).with(finDia);
-                break;
-        }
+        List<Movimientos> ingresos = movimientosBD.stream()
+                .filter(m -> m.getMonto() != null && m.getIdTipoMovimiento() != null)
+                .filter(m -> m.getIdTipoMovimiento() == 1
+                        || (m.getIdTipoMovimiento() == 5 && m.getMonto().compareTo(BigDecimal.ZERO) < 0))
+                .collect(Collectors.toList());
 
-        List<Orden> ordenes = ordenRepository.encontrarOrdenesParaFinanzas(inicio, fin);
-
-        BigDecimal total = ordenes.stream()
-                .map(o -> o.getMontoPagado() != null ? o.getMontoPagado() : BigDecimal.ZERO)
+        BigDecimal total = ingresos.stream()
+                .map(m -> m.getMonto().abs())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<BarraIngresosDTO> barras = new ArrayList<>();
 
-        if ("Semana".equalsIgnoreCase(filtroTiempo)) {
+        if ("semana".equals(filtro)) {
             String[] dias = { "Lun", "Mar", "Mie", "Jue", "Vie", "Sab", "Dom" };
             for (int i = 0; i < 7; i++) {
                 int diaSemana = i + 1;
-                double sumaDia = ordenes.stream()
-                        .filter(o -> o.getFechaCreacion().getDayOfWeek().getValue() == diaSemana)
-                        .mapToDouble(o -> o.getMontoPagado() != null ? o.getMontoPagado().doubleValue() : 0.0)
+                double sumaDia = ingresos.stream()
+                        .filter(m -> m.getFechaMovimiento().getDayOfWeek().getValue() == diaSemana)
+                        .mapToDouble(m -> m.getMonto().abs().doubleValue())
                         .sum();
 
-                String color = (ahora.getDayOfWeek().getValue() == diaSemana ? "#5C7CFA" : "#E0E7FF");
+                String color = (ahora.getDayOfWeek().getValue() == diaSemana) ? "#5C7CFA" : "#E0E7FF";
                 barras.add(new BarraIngresosDTO(sumaDia, dias[i], color));
             }
-        } else if ("Mes".equalsIgnoreCase(filtroTiempo)) {
+        } else if ("mes".equals(filtro)) {
             for (int i = 0; i < 4; i++) {
                 int diaInicio = (i * 7) + 1;
-                int diaFin = (i + 1) * 7;
+                int diaFin = (i == 3) ? 31 : (i + 1) * 7;
 
-                double sumaSemana = ordenes.stream()
-                        .filter(o -> {
-                            int diaMes = o.getFechaCreacion().getDayOfMonth();
+                double sumaSemana = ingresos.stream()
+                        .filter(m -> {
+                            int diaMes = m.getFechaMovimiento().getDayOfMonth();
                             return diaMes >= diaInicio && diaMes <= diaFin;
                         })
-                        .mapToDouble(o -> o.getMontoPagado() != null ? o.getMontoPagado().doubleValue() : 0.0)
+                        .mapToDouble(m -> m.getMonto().abs().doubleValue())
                         .sum();
 
                 int diaHoy = ahora.getDayOfMonth();
                 String color = (diaHoy >= diaInicio && diaHoy <= diaFin) ? "#5C7CFA" : "#E0E7FF";
-
                 barras.add(new BarraIngresosDTO(sumaSemana, "Sem " + (i + 1), color));
             }
-        } else if ("Año".equalsIgnoreCase(filtroTiempo) || "Anio".equalsIgnoreCase(filtroTiempo)) {
+        } else if ("año".equals(filtro) || "anio".equals(filtro)) {
             String[] meses = { "Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic" };
             for (int i = 0; i < 12; i++) {
                 int mesNumero = i + 1;
-                double sumaMes = ordenes.stream()
-                        .filter(o -> o.getFechaCreacion().getMonthValue() == mesNumero)
-                        .mapToDouble(o -> o.getMontoPagado() != null ? o.getMontoPagado().doubleValue() : 0.0)
+                double sumaMes = ingresos.stream()
+                        .filter(m -> m.getFechaMovimiento().getMonthValue() == mesNumero)
+                        .mapToDouble(m -> m.getMonto().abs().doubleValue())
                         .sum();
 
-                String color = (ahora.getMonthValue() == mesNumero ? "#5C7CFA" : "#E0E7FF");
+                String color = (ahora.getMonthValue() == mesNumero) ? "#5C7CFA" : "#E0E7FF";
                 barras.add(new BarraIngresosDTO(sumaMes, meses[i], color));
             }
         } else {
@@ -350,41 +331,19 @@ public class GraficasService {
     }
 
     public DashboardEgresosDTO obtenerDashboardEgresos(String filtroTiempo) {
-        LocalDateTime ahora = LocalDateTime.now();
-        LocalDateTime inicio = ahora;
-        LocalDateTime fin = ahora;
+        LocalDateTime[] rango = calcularRangoFechas(filtroTiempo);
         String filtro = filtroTiempo != null ? filtroTiempo.toLowerCase() : "mes";
 
-        if ("hoy".equals(filtro) || "dia".equals(filtro)) {
-            inicio = ahora.with(LocalTime.MIN);
-            fin = ahora.with(LocalTime.MAX);
-        } else if ("semana".equals(filtro)) {
-            inicio = ahora.with(java.time.DayOfWeek.MONDAY).with(LocalTime.MIN);
-            fin = ahora.with(java.time.DayOfWeek.SUNDAY).with(LocalTime.MAX);
-        } else if ("mes".equals(filtro)) {
-            inicio = ahora.withDayOfMonth(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfMonth()).with(LocalTime.MAX);
-        } else if ("año".equals(filtro) || "anio".equals(filtro)) {
-            inicio = ahora.withDayOfYear(1).with(LocalTime.MIN);
-            fin = ahora.with(java.time.temporal.TemporalAdjusters.lastDayOfYear()).with(LocalTime.MAX);
-        }
-
-        List<Movimientos> movimientosBD = movimientoRepository.findEgresosPorRango(IDS_TIPOS_EGRESOS, inicio, fin);
+        List<Movimientos> movimientosBD = movimientoRepository.findEgresosPorRango(
+                IDS_TIPOS_EGRESOS, rango[0], rango[1]);
 
         List<Movimientos> egresos = movimientosBD.stream()
-                .filter(m -> {
-                    if (m.getMonto() == null)
-                        return false;
-                    if (m.getIdTipoMovimiento() != null && m.getIdTipoMovimiento() == 5
-                            && m.getMonto().compareTo(BigDecimal.ZERO) < 0) {
-                        return false;
-                    }
-                    return true;
-                })
+                .filter(m -> m.getMonto() != null && m.getIdTipoMovimiento() != null)
+                .filter(m -> !(m.getIdTipoMovimiento() == 5 && m.getMonto().compareTo(BigDecimal.ZERO) < 0))
                 .collect(Collectors.toList());
 
         BigDecimal montoEgresado = egresos.stream()
-                .map(m -> m.getMonto() != null ? m.getMonto() : BigDecimal.ZERO)
+                .map(m -> m.getMonto().abs())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         List<BarraEgresosDTO> barras = new ArrayList<>();
@@ -395,7 +354,7 @@ public class GraficasService {
                 int diaSemana = i + 1;
                 BigDecimal sumaDia = egresos.stream()
                         .filter(m -> m.getFechaMovimiento().getDayOfWeek().getValue() == diaSemana)
-                        .map(m -> m.getMonto() != null ? m.getMonto() : BigDecimal.ZERO)
+                        .map(m -> m.getMonto().abs())
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 barras.add(new BarraEgresosDTO(dias[i], sumaDia));
@@ -403,14 +362,14 @@ public class GraficasService {
         } else if ("mes".equals(filtro)) {
             for (int i = 0; i < 4; i++) {
                 int diaInicio = (i * 7) + 1;
-                int diaFin = (i + 1) * 7;
+                int diaFin = (i == 3) ? 31 : (i + 1) * 7;
 
                 BigDecimal sumaSemana = egresos.stream()
                         .filter(m -> {
                             int diaMes = m.getFechaMovimiento().getDayOfMonth();
                             return diaMes >= diaInicio && diaMes <= diaFin;
                         })
-                        .map(m -> m.getMonto() != null ? m.getMonto() : BigDecimal.ZERO)
+                        .map(m -> m.getMonto().abs())
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 barras.add(new BarraEgresosDTO("Sem " + (i + 1), sumaSemana));
@@ -421,7 +380,7 @@ public class GraficasService {
                 int mesNumero = i + 1;
                 BigDecimal sumaMes = egresos.stream()
                         .filter(m -> m.getFechaMovimiento().getMonthValue() == mesNumero)
-                        .map(m -> m.getMonto() != null ? m.getMonto() : BigDecimal.ZERO)
+                        .map(m -> m.getMonto().abs())
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
 
                 barras.add(new BarraEgresosDTO(meses[i], sumaMes));
