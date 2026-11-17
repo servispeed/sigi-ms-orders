@@ -1,16 +1,17 @@
 package com.imprenta.ordenes_service.service;
 
+import java.math.BigDecimal;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import com.imprenta.ordenes_service.client.PersonasClient;
+import com.imprenta.ordenes_service.dto.ClienteDTO;
 import com.imprenta.ordenes_service.repository.OrdenRepository;
-
-import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 @Service
 public class MorosidadService {
@@ -30,21 +31,51 @@ public class MorosidadService {
         List<Integer> clientesVencidos = ordenRepository.encontrarClientesConOrdenesVencidas();
 
         for (Integer idCliente : clientesVencidos) {
-            // Verificamos si realmente debe dinero globalmente
+            evaluarYActualizarEstatusCliente(idCliente);
+        }
+    }
+
+    /**
+     * Evalúa el saldo deudor del cliente y actualiza su estatus de crédito
+     * a AL_CORRIENTE si liquidó su deuda, o ATRASADO si tiene saldo vencido.
+     */
+    public void evaluarYActualizarEstatusCliente(Integer idCliente) {
+        if (idCliente == null || idCliente <= 0) {
+            return;
+        }
+
+        try {
             BigDecimal deuda = ordenRepository.calcularSaldoDeudor(idCliente);
-            if (deuda != null && deuda.compareTo(BigDecimal.ZERO) > 0) {
-                try {
-                    // Armamos el body que espera tu ActualizarCreditoDTO
-                    Map<String, Object> actualizacionCredito = new HashMap<>();
-                    actualizacionCredito.put("estatusCredito", "ATRASADO");
+            BigDecimal saldoActual = (deuda != null) ? deuda : BigDecimal.ZERO;
 
-                    // Llamamos a tu endpoint existente
-                    personasClient.actualizarCredito(idCliente, actualizacionCredito);
+            ClienteDTO cliente = personasClient.obtenerClientePorId(idCliente);
+            String estatusActual = (cliente != null) ? cliente.getEstatusCredito() : null;
 
-                } catch (Exception e) {
-                    System.err.println("Error al actualizar estatus de morosidad para cliente: " + idCliente);
+            String nuevoEstatus;
+
+            if (saldoActual.compareTo(BigDecimal.ZERO) <= 0) {
+                // Ya liquidó todo: pasa a AL_CORRIENTE (incluso si estaba ATRASADO o SUSPENDIDO)
+                nuevoEstatus = "AL_CORRIENTE";
+            } else {
+                // Si está SUSPENDIDO manualmente, no lo degradamos a ATRASADO
+                if ("SUSPENDIDO".equalsIgnoreCase(estatusActual)) {
+                    return;
                 }
+                nuevoEstatus = "ATRASADO";
             }
+
+            // Evita llamadas HTTP innecesarias si el estatus ya es el correcto
+            if (nuevoEstatus.equalsIgnoreCase(estatusActual)) {
+                return;
+            }
+
+            Map<String, Object> actualizacionCredito = new HashMap<>();
+            actualizacionCredito.put("estatusCredito", nuevoEstatus);
+
+            personasClient.actualizarCredito(idCliente, actualizacionCredito);
+
+        } catch (Exception e) {
+            System.err.println("Error al actualizar estatus de crédito para cliente " + idCliente + ": " + e.getMessage());
         }
     }
 }
