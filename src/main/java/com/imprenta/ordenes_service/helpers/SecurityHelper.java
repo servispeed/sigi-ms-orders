@@ -62,10 +62,13 @@ public class SecurityHelper {
         try {
             UsuarioDTO u = personasClient.obtenerUsuarioPorId(idUsuario);
             if (u == null || u.getIdRol() == null) {
-                throw new RuntimeException("Usuario o Rol nulo");
+                throw new RuntimeException("Usuario o Rol nulo devuelto por personas-service");
             }
             return u;
         } catch (Exception e) {
+            System.err.println("ERROR DE RED/FEIGN AL VALIDAR USUARIO ID " + idUsuario + ": " + e.getMessage());
+            e.printStackTrace();
+
             throw new BadRequestException(
                     "Error de seguridad: No se pudo validar la identidad del usuario ID " + idUsuario);
         }
