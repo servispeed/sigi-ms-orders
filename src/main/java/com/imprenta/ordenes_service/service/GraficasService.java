@@ -81,7 +81,7 @@ public class GraficasService {
         Long pagosPendientes = ordenRepository.contarPagosPendientes();
         Double pagosTotal = ordenRepository.sumarDineroPendiente();
 
-        return new DashboardResumenDTO(totalCotizaciones, ordenesActivas, pagosPendientes, pagosTotal);
+        return new DashboardResumenDTO(totalCotizaciones, ordenesActivas, pagosPendientes != null ? pagosPendientes : 0L, pagosTotal != null ? pagosTotal : 0.0);
     }
 
     public DashboardIngresosDTO obtenerDashboardIngresos(String filtroTiempo) {

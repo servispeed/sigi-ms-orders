@@ -42,7 +42,7 @@ public class EstadoCotizacionPagada implements OrdenState {
         Boolean hayInsumos = (Boolean) params.get("hayInsumos");
 
         if (hayInsumos == null) {
-            throw new BadRequestException("Error: Debes indicar si hay insumos (true/false) para avanzar.");
+            throw new BadRequestException("Error: Se debe indicar si hay insumos para avanzar.");
 
         }
 

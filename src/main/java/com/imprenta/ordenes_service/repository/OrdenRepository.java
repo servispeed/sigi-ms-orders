@@ -5,6 +5,8 @@ import com.imprenta.ordenes_service.dto.reportes.GraficaPastelDTO;
 import com.imprenta.ordenes_service.dto.reportes.GraficaRadarDTO;
 import com.imprenta.ordenes_service.dto.reportes.OrdenCardDTO;
 import com.imprenta.ordenes_service.model.Orden;
+import com.imprenta.ordenes_service.dto.reportes.TopClienteDTO;
+import com.imprenta.ordenes_service.dto.reportes.TopProductoDTO;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -266,4 +268,27 @@ public interface OrdenRepository extends JpaRepository<Orden, Integer> {
             ) AS clientes_con_saldo
             """, nativeQuery = true)
     Page<ClienteSaldoProjection> encontrarClientesConSaldoDeudor(Pageable pageable);
+
+    @Query(value = """
+            SELECT p.descripcion as descripcion, SUM(do2.cantidad) as cantidad
+            FROM detalle_orden do2
+            JOIN productos p ON do2.id_producto = p.id_producto
+            JOIN ordenes o ON do2.id_orden = o.id_orden
+            WHERE o.id_estatus_actual NOT IN (1, 11)
+            GROUP BY p.descripcion
+            ORDER BY cantidad DESC
+            LIMIT 4
+            """, nativeQuery = true)
+    List<TopProductoDTO> obtenerProductosMasSolicitados();
+
+    @Query(value = """
+            SELECT c.nombre as nombre, COUNT(o.id_orden) as totalCompras
+            FROM ordenes o
+            JOIN clientes c ON o.id_cliente = c.id_cliente
+            WHERE o.id_estatus_actual = 12
+            GROUP BY c.id_cliente, c.nombre
+            ORDER BY totalCompras DESC
+            LIMIT 5
+            """, nativeQuery = true)
+    List<TopClienteDTO> obtenerTopClientesPagados();
 }
