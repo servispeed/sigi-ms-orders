@@ -313,9 +313,9 @@ public class OrdenService {
                 .orElseThrow(() -> new ResourceNotFoundException("Orden no encontrada con ID: " + idOrden));
 
         if (nuevaCondicion != null && nuevaCondicion == 5) {
-            if (orden.getIdEstatusActual() == null || orden.getIdEstatusActual() != 2) {
+            if (orden.getIdEstatusActual() == null || orden.getIdEstatusActual() != 1) {
                 throw new BadRequestException(
-                        "Transacción rechazada: Solo se puede pasar a crédito si la orden está en estatus 2");
+                        "Transacción rechazada: Solo se puede pasar a crédito si la orden está en estatus 1");
             }
 
             ClienteDTO cliente = personasClient.obtenerClientePorId(orden.getIdCliente());
