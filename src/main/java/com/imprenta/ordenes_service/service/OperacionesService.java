@@ -49,6 +49,7 @@ public class OperacionesService {
         nuevoEgreso.setConcepto(dto.getConcepto());
         nuevoEgreso.setIdTipoMovimiento(dto.getIdTipoMovimiento());
         nuevoEgreso.setIdOrden(null);
+        nuevoEgreso.setIdCliente(0);
         nuevoEgreso.setIdUsuarioRegistro(dto.getIdUsuarioRegistro());
         nuevoEgreso.setFechaMovimiento(LocalDateTime.now());
 
@@ -71,7 +72,7 @@ public class OperacionesService {
         nuevoMovimiento.setFechaMovimiento(LocalDateTime.now());
         nuevoMovimiento.setConcepto(ajusteCajaDTO.getConcepto());
         nuevoMovimiento.setIdUsuarioRegistro(ajusteCajaDTO.getIdUsuario());
-
+        nuevoMovimiento.setIdCliente(0);
         nuevoMovimiento.setIdTipoMovimiento(5);
 
         if ("ENTRADA".equalsIgnoreCase(ajusteCajaDTO.getTipoAjuste())) {
